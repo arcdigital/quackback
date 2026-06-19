@@ -194,7 +194,6 @@ export const startSsoTestFn = createServerFn({ method: 'POST' })
       scope: provider.scopes ?? DEFAULT_OIDC_SCOPES.join(' '),
       state,
       nonce,
-      prompt: 'login',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
     })
