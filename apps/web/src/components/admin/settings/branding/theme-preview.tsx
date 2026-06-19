@@ -173,15 +173,6 @@ function PortalPreview() {
             </nav>
           </div>
 
-          {/* Powered by — matches apps/web/src/components/public/feedback/feedback-sidebar.tsx */}
-          <div className="flex justify-center mt-3">
-            <div className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted-foreground)] px-2.5 py-1 rounded-full bg-[var(--muted)]/50 border border-transparent">
-              <img src="/logo.png" alt="" width={14} height={14} className="-mt-px opacity-60" />
-              <span>
-                Powered by <span className="font-semibold">Quackback</span>
-              </span>
-            </div>
-          </div>
         </aside>
       </div>
     </div>
