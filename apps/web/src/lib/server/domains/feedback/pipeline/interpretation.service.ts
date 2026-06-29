@@ -14,8 +14,7 @@ import { UnrecoverableError } from 'bullmq'
 import { db, eq, feedbackSignals, rawFeedbackItems } from '@/lib/server/db'
 import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
 import { getChatModel } from '@/lib/server/domains/ai/models'
-import { withRetry } from '@/lib/server/domains/ai/retry'
-import { withUsageLogging } from '@/lib/server/domains/ai/usage-log'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { embedSignal, findSimilarPosts, findSimilarPendingSuggestions } from './embedding.service'
 import { createPostSuggestion, createVoteSuggestion } from './suggestion.service'
 import { logPipelineEvent } from './pipeline-log'
@@ -291,33 +290,20 @@ async function generateSuggestion(opts: {
     })
 
     try {
-      const completion = await withUsageLogging(
-        {
+      const completion = await createChatCompletion({
+        model,
+        user: prompt,
+        temperature: 0.3,
+        maxOutputTokens: 2000,
+        log: {
           pipelineStep: 'suggestion',
-          callType: 'chat_completion',
-          model,
           rawFeedbackItemId: opts.rawFeedbackItemId,
           signalId: opts.signalId,
           metadata: { suggestionType: opts.type },
         },
-        () =>
-          withRetry(() =>
-            openai.chat.completions.create({
-              model,
-              messages: [{ role: 'user', content: prompt }],
-              response_format: { type: 'json_object' },
-              temperature: 0.3,
-              max_completion_tokens: 2000,
-            })
-          ),
-        (r) => ({
-          inputTokens: r.usage?.prompt_tokens ?? 0,
-          outputTokens: r.usage?.completion_tokens,
-          totalTokens: r.usage?.total_tokens ?? 0,
-        })
-      )
+      })
 
-      const responseText = completion.choices?.[0]?.message?.content
+      const responseText = completion?.text
       if (responseText) {
         const result: SuggestionGenerationResult = JSON.parse(stripCodeFences(responseText))
         suggestedTitle = result.title

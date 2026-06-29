@@ -9,8 +9,7 @@ import { UnrecoverableError } from 'bullmq'
 import { db, eq, rawFeedbackItems, feedbackSignals, sql } from '@/lib/server/db'
 import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
 import { getChatModel } from '@/lib/server/domains/ai/models'
-import { withRetry } from '@/lib/server/domains/ai/retry'
-import { withUsageLogging } from '@/lib/server/domains/ai/usage-log'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { buildExtractionPrompt } from './prompts/extraction.prompt'
 import { shouldExtract } from './quality-gate.service'
 import { logPipelineEvent } from './pipeline-log'
@@ -161,33 +160,20 @@ export async function extractSignals(rawItemId: RawFeedbackItemId): Promise<void
       context,
     })
 
-    const completion = await withUsageLogging(
-      {
+    const completion = await createChatCompletion({
+      model,
+      user: prompt,
+      temperature: 0.1,
+      maxOutputTokens: 2000,
+      log: {
         pipelineStep: 'extraction',
-        callType: 'chat_completion',
-        model,
         rawFeedbackItemId: rawItemId,
         metadata: { promptVersion: EXTRACTION_PROMPT_VERSION },
       },
-      () =>
-        withRetry(() =>
-          openai.chat.completions.create({
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
-            temperature: 0.1,
-            max_completion_tokens: 2000,
-          })
-        ),
-      (r) => ({
-        inputTokens: r.usage?.prompt_tokens ?? 0,
-        outputTokens: r.usage?.completion_tokens,
-        totalTokens: r.usage?.total_tokens ?? 0,
-      })
-    )
+    })
 
-    const responseText = completion.choices[0]?.message?.content
-    if (!responseText) {
+    const responseText = completion?.text
+    if (!completion || !responseText) {
       throw new UnrecoverableError('Empty response from extraction model')
     }
 
@@ -265,8 +251,8 @@ export async function extractSignals(rawItemId: RawFeedbackItemId): Promise<void
       .set({
         processingState: 'interpreting',
         stateChangedAt: new Date(),
-        extractionInputTokens: completion.usage?.prompt_tokens ?? null,
-        extractionOutputTokens: completion.usage?.completion_tokens ?? null,
+        extractionInputTokens: completion.usage.inputTokens ?? null,
+        extractionOutputTokens: completion.usage.outputTokens ?? null,
         updatedAt: new Date(),
       })
       .where(eq(rawFeedbackItems.id, rawItemId))

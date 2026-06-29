@@ -7,15 +7,13 @@
 
 import { db, posts, eq, and, isNull, sql, desc, ne } from '@/lib/server/db'
 import type { PostId, BoardId } from '@quackback/ids'
-import { getOpenAI } from '@/lib/server/domains/ai/config'
 import { getEmbeddingModel } from '@/lib/server/domains/ai/models'
 import { withRetry } from '@/lib/server/domains/ai/retry'
 import { withUsageLogging } from '@/lib/server/domains/ai/usage-log'
+import { createEmbeddingVector } from '@/lib/server/domains/ai/embedding-client'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'embeddings' })
-
-const EMBEDDING_DIMENSIONS = 1536
 
 /**
  * Generate embedding for text using OpenAI.
@@ -30,9 +28,8 @@ export async function generateEmbedding(
     signalId?: string
   }
 ): Promise<number[] | null> {
-  const openai = getOpenAI()
   const model = getEmbeddingModel()
-  if (!openai || !model) return null
+  if (!model) return null
 
   // Truncate to avoid token limits for the configured model
   const truncated = text.slice(0, 8000)
@@ -48,33 +45,38 @@ export async function generateEmbedding(
           rawFeedbackItemId: logContext.rawFeedbackItemId,
           signalId: logContext.signalId,
         },
-        () =>
-          withRetry(() =>
-            openai.embeddings.create({
-              model,
-              input: truncated,
-              dimensions: EMBEDDING_DIMENSIONS,
-            })
-          ),
+        () => withRetry(() => createEmbeddingVector(model, truncated)),
         (r) => ({
-          inputTokens: r.usage?.prompt_tokens ?? 0,
-          totalTokens: r.usage?.total_tokens ?? 0,
+          inputTokens: r?.usage.inputTokens ?? 0,
+          totalTokens: r?.usage.totalTokens ?? 0,
         })
       )
-      return response.data[0]?.embedding ?? null
+      return response?.embedding ?? null
     }
 
-    const { result: response } = await withRetry(() =>
-      openai.embeddings.create({
-        model,
-        input: truncated,
-        dimensions: EMBEDDING_DIMENSIONS,
-      })
-    )
-    return response.data[0]?.embedding ?? null
+    const { result: response } = await withRetry(() => createEmbeddingVector(model, truncated))
+    return response?.embedding ?? null
   } catch (error) {
+    // AWS SDK errors carry the useful detail (name, $fault, $metadata,
+    // service message) in fields that pino's `err` serializer drops, so pull
+    // them out explicitly as plain string fields.
+    const e = error as {
+      name?: string
+      message?: string
+      $fault?: string
+      $metadata?: { httpStatusCode?: number; requestId?: string }
+    }
     log.error(
-      { pipeline_step: logContext?.pipelineStep, post_id: logContext?.postId, err: error },
+      {
+        pipeline_step: logContext?.pipelineStep,
+        post_id: logContext?.postId,
+        err: error,
+        aws_error_name: e?.name,
+        aws_error_message: e?.message,
+        aws_fault: e?.$fault,
+        aws_http_status: e?.$metadata?.httpStatusCode,
+        aws_request_id: e?.$metadata?.requestId,
+      },
       'embedding generation failed'
     )
     return null

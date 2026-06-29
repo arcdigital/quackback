@@ -20,7 +20,7 @@ import {
 } from '@/lib/server/db'
 import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
 import { getChatModel } from '@/lib/server/domains/ai/models'
-import { withRetry } from '@/lib/server/domains/ai/retry'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { enforceAiTokenBudget } from '@/lib/server/domains/settings/tier-enforce'
 import type { PostId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
@@ -122,20 +122,15 @@ export async function generateAndSavePostSummary(postId: PostId): Promise<void> 
       '\n\nA previous summary is included. Update it to reflect the current state of the discussion — preserve existing context that is still relevant, and incorporate any new information from recent comments.'
     : SYSTEM_PROMPT
 
-  const { result: completion } = await withRetry(() =>
-    openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: input },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.2,
-      max_completion_tokens: 1000,
-    })
-  )
+  const completion = await createChatCompletion({
+    model,
+    system: systemPrompt,
+    user: input,
+    temperature: 0.2,
+    maxOutputTokens: 1000,
+  })
 
-  const responseText = completion.choices[0]?.message?.content
+  const responseText = completion?.text
   if (!responseText) {
     log.error({ post_id: postId }, 'empty summary response')
     return

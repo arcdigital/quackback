@@ -6,15 +6,13 @@
  */
 
 import { db, helpCenterArticles, eq, sql } from '@/lib/server/db'
-import { getOpenAI } from '@/lib/server/domains/ai/config'
 import { getEmbeddingModel } from '@/lib/server/domains/ai/models'
 import { withRetry } from '@/lib/server/domains/ai/retry'
+import { createEmbeddingVector } from '@/lib/server/domains/ai/embedding-client'
 import type { HelpCenterArticleId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'help-center-embedding' })
-
-const KB_EMBEDDING_DIMENSIONS = 1536
 
 /**
  * Format article text for embedding input.
@@ -33,19 +31,12 @@ export function formatArticleText(title: string, content: string, categoryName?:
  * Generate embedding for text using the configured embedding model.
  */
 export async function generateKbEmbedding(text: string): Promise<number[] | null> {
-  const openai = getOpenAI()
   const model = getEmbeddingModel()
-  if (!openai || !model) return null
+  if (!model) return null
 
   try {
-    const { result: response } = await withRetry(() =>
-      openai.embeddings.create({
-        model,
-        input: text,
-        dimensions: KB_EMBEDDING_DIMENSIONS,
-      })
-    )
-    return response.data[0]?.embedding ?? null
+    const { result: response } = await withRetry(() => createEmbeddingVector(model, text))
+    return response?.embedding ?? null
   } catch (error) {
     log.error({ err: error }, 'article embedding generation failed')
     return null

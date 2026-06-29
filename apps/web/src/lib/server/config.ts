@@ -102,8 +102,15 @@ const configSchema = z.object({
   s3Proxy: envBoolean,
 
   // AI (optional)
+  aiProvider: z.enum(['openai', 'bedrock']).default('openai'),
   openaiApiKey: z.string().optional(),
   openaiBaseUrl: z.string().optional(),
+  // Bedrock (only used when aiProvider === 'bedrock'). Region + base URL are
+  // required to enable; credentials may come from the default AWS provider
+  // chain (instance profile / EKS pod identity), so the API key is optional.
+  aiBedrockRegion: z.string().optional(),
+  aiBedrockBaseUrl: z.string().optional(),
+  aiBedrockApiKey: z.string().optional(),
   aiChatModel: z.string().optional(),
   aiEmbeddingModel: z.string().optional(),
   aiSummaryModel: z.string().optional(),
@@ -163,8 +170,12 @@ function buildConfigFromEnv(): unknown {
     s3Proxy: env('S3_PROXY'),
 
     // AI
+    aiProvider: env('AI_PROVIDER'),
     openaiApiKey: env('OPENAI_API_KEY'),
     openaiBaseUrl: env('OPENAI_BASE_URL'),
+    aiBedrockRegion: env('AI_BEDROCK_REGION') ?? env('AWS_REGION'),
+    aiBedrockBaseUrl: env('AI_BEDROCK_BASE_URL'),
+    aiBedrockApiKey: env('AI_BEDROCK_API_KEY') ?? env('AWS_BEARER_TOKEN_BEDROCK'),
     aiChatModel: env('AI_CHAT_MODEL'),
     aiEmbeddingModel: env('AI_EMBEDDING_MODEL'),
     aiSummaryModel: env('AI_SUMMARY_MODEL'),
@@ -300,11 +311,23 @@ export const config = {
   },
 
   // AI
+  get aiProvider() {
+    return loadConfig().aiProvider
+  },
   get openaiApiKey() {
     return loadConfig().openaiApiKey
   },
   get openaiBaseUrl() {
     return loadConfig().openaiBaseUrl
+  },
+  get aiBedrockRegion() {
+    return loadConfig().aiBedrockRegion
+  },
+  get aiBedrockBaseUrl() {
+    return loadConfig().aiBedrockBaseUrl
+  },
+  get aiBedrockApiKey() {
+    return loadConfig().aiBedrockApiKey
   },
   get aiChatModel() {
     return loadConfig().aiChatModel

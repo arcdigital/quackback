@@ -9,8 +9,7 @@ import { db, postSentiment, posts, eq, and, gte, lte, sql, count, isNull } from 
 import { createId, type PostId } from '@quackback/ids'
 import { getOpenAI } from '@/lib/server/domains/ai/config'
 import { getChatModel } from '@/lib/server/domains/ai/models'
-import { withRetry } from '@/lib/server/domains/ai/retry'
-import { withUsageLogging } from '@/lib/server/domains/ai/usage-log'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { enforceAiTokenBudget } from '@/lib/server/domains/settings/tier-enforce'
 import { logger } from '@/lib/server/logger'
 
@@ -78,32 +77,16 @@ export async function analyzeSentiment(
   const text = `Title: ${title}\n\nContent: ${truncatedContent}`
 
   try {
-    const response = await withUsageLogging(
-      {
-        pipelineStep: 'sentiment',
-        callType: 'chat_completion',
-        model,
-        postId,
-      },
-      () =>
-        withRetry(() =>
-          openai.chat.completions.create({
-            model,
-            max_completion_tokens: 1000,
-            messages: [
-              { role: 'system', content: SENTIMENT_PROMPT },
-              { role: 'user', content: text },
-            ],
-            response_format: { type: 'json_object' },
-          })
-        ),
-      (r) => ({
-        inputTokens: r.usage?.prompt_tokens ?? 0,
-        outputTokens: r.usage?.completion_tokens,
-        totalTokens: r.usage?.total_tokens ?? 0,
-      })
-    )
-    const parsed = JSON.parse(response.choices[0]?.message?.content || '{}')
+    const response = await createChatCompletion({
+      model,
+      system: SENTIMENT_PROMPT,
+      user: text,
+      maxOutputTokens: 1000,
+      log: { pipelineStep: 'sentiment', postId },
+    })
+    if (!response) return null
+
+    const parsed = JSON.parse(response.text || '{}')
 
     if (!isValidSentiment(parsed.sentiment) || typeof parsed.confidence !== 'number') {
       log.error({ model_response_keys: Object.keys(parsed) }, 'invalid sentiment model response')
@@ -114,8 +97,8 @@ export async function analyzeSentiment(
       sentiment: parsed.sentiment,
       confidence: parsed.confidence,
       model,
-      inputTokens: response.usage?.prompt_tokens,
-      outputTokens: response.usage?.completion_tokens,
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
     }
   } catch (error) {
     log.error({ err: error }, 'sentiment generation failed')

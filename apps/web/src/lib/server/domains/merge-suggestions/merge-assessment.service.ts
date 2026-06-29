@@ -4,8 +4,8 @@
  * Single batched LLM call to verify true duplicates and determine merge direction.
  */
 
-import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
-import { withRetry } from '@/lib/server/domains/ai/retry'
+import { stripCodeFences } from '@/lib/server/domains/ai/config'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { enforceAiTokenBudget } from '@/lib/server/domains/settings/tier-enforce'
 import { logger } from '@/lib/server/logger'
 import type { PostId } from '@quackback/ids'
@@ -60,25 +60,19 @@ export async function assessMergeCandidates(
 ): Promise<MergeAssessment[]> {
   await enforceAiTokenBudget()
 
-  const openai = getOpenAI()
-  if (!openai || candidates.length === 0) return []
+  if (candidates.length === 0) return []
 
   const userPrompt = buildPrompt(sourcePost, candidates)
 
-  const { result: completion } = await withRetry(() =>
-    openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-      max_completion_tokens: 1000,
-    })
-  )
+  const completion = await createChatCompletion({
+    model,
+    system: SYSTEM_PROMPT,
+    user: userPrompt,
+    temperature: 0.1,
+    maxOutputTokens: 1000,
+  })
 
-  const responseText = completion.choices[0]?.message?.content
+  const responseText = completion?.text
   if (!responseText) {
     log.error('empty llm response')
     return []

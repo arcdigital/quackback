@@ -14,8 +14,7 @@
 
 import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
 import { getChatModel } from '@/lib/server/domains/ai/models'
-import { withRetry } from '@/lib/server/domains/ai/retry'
-import { withUsageLogging } from '@/lib/server/domains/ai/usage-log'
+import { createChatCompletion } from '@/lib/server/domains/ai/chat'
 import { buildQualityGatePrompt } from './prompts/quality-gate.prompt'
 import { logger } from '@/lib/server/logger'
 import type { RawFeedbackContent, RawFeedbackItemContextEnvelope } from '../types'
@@ -90,34 +89,20 @@ export async function shouldExtract(item: {
   try {
     const prompt = buildQualityGatePrompt(item)
 
-    const completion = await withUsageLogging(
-      {
+    const completion = await createChatCompletion({
+      model,
+      user: prompt,
+      temperature: 0,
+      maxOutputTokens: isChannelMonitor ? 200 : 100,
+      retry: { maxRetries: 2, baseDelayMs: 500 },
+      log: {
         pipelineStep: 'quality_gate',
-        callType: 'chat_completion',
-        model,
         rawFeedbackItemId: item.rawFeedbackItemId,
         metadata: { promptVersion: 'v1', isChannelMonitor, temperature: 0 },
       },
-      () =>
-        withRetry(
-          () =>
-            openai.chat.completions.create({
-              model,
-              messages: [{ role: 'user', content: prompt }],
-              response_format: { type: 'json_object' },
-              temperature: 0,
-              max_tokens: isChannelMonitor ? 200 : 100,
-            }),
-          { maxRetries: 2, baseDelayMs: 500 }
-        ),
-      (r) => ({
-        inputTokens: r.usage?.prompt_tokens ?? 0,
-        outputTokens: r.usage?.completion_tokens,
-        totalTokens: r.usage?.total_tokens ?? 0,
-      })
-    )
+    })
 
-    const responseText = completion.choices[0]?.message?.content
+    const responseText = completion?.text
     if (!responseText) {
       return { extract: true, tier: 3, reason: 'quality gate returned empty response' }
     }
