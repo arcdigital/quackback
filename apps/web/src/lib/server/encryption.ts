@@ -39,12 +39,16 @@ const INFO_PREFIX = 'quackback:v1'
 const derivedKeys = new Map<string, Buffer>()
 
 /**
- * Derive a purpose-specific encryption key using HKDF-SHA256.
+ * Derive a purpose-specific 256-bit key from the master secret using
+ * HKDF-SHA256. The `purpose` string provides domain separation, so keys for
+ * different uses are cryptographically independent — a leak of one does not
+ * expose the master secret or any sibling key. Exported for non-encryption
+ * uses that need a domain-separated signing key (e.g. HMAC token signing).
  *
  * @param purpose - Identifies what the key is used for (e.g., 'integration-tokens')
  * @returns 256-bit derived key
  */
-function deriveKey(purpose: string): Buffer {
+export function deriveKey(purpose: string): Buffer {
   const cached = derivedKeys.get(purpose)
   if (cached) return cached
 

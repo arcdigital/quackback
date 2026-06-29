@@ -19,6 +19,7 @@
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { config } from '@/lib/server/config'
+import { deriveKey } from '@/lib/server/encryption'
 import { sniffImageMime } from '@/lib/server/content/magic-bytes'
 
 // ============================================================================
@@ -29,18 +30,24 @@ export interface S3Config {
   endpoint?: string
   bucket: string
   region: string
-  accessKeyId: string
-  secretAccessKey: string
+  // Static credentials are optional: when omitted, the AWS SDK falls back to
+  // its default credential chain (env, shared config, instance profile, EKS pod
+  // identity). Both must be set together to use explicit keys.
+  accessKeyId?: string
+  secretAccessKey?: string
   forcePathStyle: boolean
   publicUrl?: string
 }
 
 /**
  * Check if S3 storage is configured.
- * Returns true if all required environment variables are set.
+ *
+ * Requires a bucket and region. Static keys are optional — without them the
+ * SDK uses the default credential chain (e.g. EKS pod identity), so a role-based
+ * deployment is fully configured with just S3_BUCKET + S3_REGION.
  */
 export function isS3Configured(): boolean {
-  return !!(config.s3Bucket && config.s3Region && config.s3AccessKeyId && config.s3SecretAccessKey)
+  return !!(config.s3Bucket && config.s3Region)
 }
 
 /**
@@ -48,9 +55,15 @@ export function isS3Configured(): boolean {
  * Throws if required variables are missing.
  */
 export function getS3Config(): S3Config {
-  if (!config.s3Bucket || !config.s3Region || !config.s3AccessKeyId || !config.s3SecretAccessKey) {
+  if (!config.s3Bucket || !config.s3Region) {
+    throw new Error('S3 storage is not configured. Set S3_BUCKET and S3_REGION.')
+  }
+
+  // Keys are all-or-nothing: a half-set pair is a misconfiguration that would
+  // otherwise silently fall back to the credential chain and mask the typo.
+  if (Boolean(config.s3AccessKeyId) !== Boolean(config.s3SecretAccessKey)) {
     throw new Error(
-      'S3 storage is not configured. Set S3_BUCKET, S3_REGION, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY.'
+      'S3 credentials are half-configured. Set BOTH S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY, or neither (to use the default AWS credential chain / pod identity).'
     )
   }
 
@@ -102,7 +115,9 @@ interface S3Module {
     region: string
     endpoint?: string
     forcePathStyle: boolean
-    credentials: { accessKeyId: string; secretAccessKey: string }
+    // Omitted when no static keys are set, so the SDK uses its default
+    // credential chain (env, shared config, instance profile, pod identity).
+    credentials?: { accessKeyId: string; secretAccessKey: string }
   }) => S3ClientInstance
   PutObjectCommand: new (input: BucketKeyInput) => S3Command
   GetObjectCommand: new (input: BucketKeyInput) => S3Command
@@ -156,10 +171,16 @@ async function getS3Client(): Promise<S3ClientInstance> {
     region: s3Config.region,
     endpoint: s3Config.endpoint,
     forcePathStyle: s3Config.forcePathStyle,
-    credentials: {
-      accessKeyId: s3Config.accessKeyId,
-      secretAccessKey: s3Config.secretAccessKey,
-    },
+    // Pass explicit credentials only when both keys are set; otherwise omit so
+    // the SDK resolves them from the default chain (e.g. EKS pod identity).
+    ...(s3Config.accessKeyId && s3Config.secretAccessKey
+      ? {
+          credentials: {
+            accessKeyId: s3Config.accessKeyId,
+            secretAccessKey: s3Config.secretAccessKey,
+          },
+        }
+      : {}),
   })
 
   return _s3Client
@@ -219,7 +240,7 @@ export async function generatePresignedUploadUrl(
   const publicUrl = buildPublicUrl(s3Config, key)
 
   if (config.s3Proxy) {
-    const uploadUrl = buildProxyUploadUrl(s3Config.secretAccessKey, key, contentType, expiresIn)
+    const uploadUrl = buildProxyUploadUrl(key, contentType, expiresIn)
     return { uploadUrl, publicUrl, key }
   }
 
@@ -241,23 +262,25 @@ export async function generatePresignedUploadUrl(
 // Proxy Upload Token (used when S3_PROXY=true)
 // ============================================================================
 
-function proxyUploadSig(secret: string, key: string, contentType: string, exp: number): string {
+// Proxy upload tokens are signed with a key derived from the app SECRET_KEY
+// (not the S3 secret, which no longer exists under pod identity). HKDF domain
+// separation keeps this key independent of other SECRET_KEY-derived uses
+// (integration-token encryption, etc.). These tokens only authorize a
+// short-lived (key, contentType) write to our own proxy route.
+const PROXY_UPLOAD_KEY_PURPOSE = 's3-proxy-upload'
+
+function proxyUploadSig(key: string, contentType: string, exp: number): string {
   // truncated to 128 bits; sufficient for short-lived upload auth
-  return createHmac('sha256', secret)
+  return createHmac('sha256', deriveKey(PROXY_UPLOAD_KEY_PURPOSE))
     .update(`${key}|${contentType}|${exp}`)
     .digest('hex')
     .slice(0, 32)
 }
 
-function buildProxyUploadUrl(
-  secret: string,
-  key: string,
-  contentType: string,
-  expiresIn: number
-): string {
+function buildProxyUploadUrl(key: string, contentType: string, expiresIn: number): string {
   if (!config.baseUrl) throw new Error('BASE_URL must be set to use S3_PROXY upload')
   const exp = Date.now() + expiresIn * 1000
-  const sig = proxyUploadSig(secret, key, contentType, exp)
+  const sig = proxyUploadSig(key, contentType, exp)
   const base = config.baseUrl.replace(/\/$/, '')
   return `${base}/api/storage/${key}?ct=${encodeURIComponent(contentType)}&exp=${exp}&sig=${sig}`
 }
@@ -267,7 +290,6 @@ function buildProxyUploadUrl(
  * Returns true only if the signature is valid and the token has not expired.
  */
 export function verifyProxyUploadToken(
-  secret: string,
   key: string,
   contentType: string,
   exp: string | null,
@@ -276,7 +298,7 @@ export function verifyProxyUploadToken(
   if (!exp || !sig) return false
   const expNum = Number(exp)
   if (!Number.isFinite(expNum) || Date.now() > expNum) return false
-  const expected = proxyUploadSig(secret, key, contentType, expNum)
+  const expected = proxyUploadSig(key, contentType, expNum)
   try {
     return timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
   } catch {

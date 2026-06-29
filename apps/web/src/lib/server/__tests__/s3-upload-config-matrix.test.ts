@@ -39,6 +39,11 @@ const mockConfig = {
 
 vi.mock('@/lib/server/config', () => ({ config: mockConfig }))
 
+// Proxy upload tokens are HMAC-signed with a key derived from SECRET_KEY via
+// HKDF. Mock the derivation to a fixed key the test can verify against.
+const PROXY_UPLOAD_KEY = Buffer.from('derived-proxy-upload-key-32-bytes!!', 'utf8')
+vi.mock('@/lib/server/encryption', () => ({ deriveKey: vi.fn(() => PROXY_UPLOAD_KEY) }))
+
 // ── Mock AWS SDK modules ─────────────────────────────────────────────────────
 
 const mockGetSignedUrl = vi.fn(async (_client: unknown, cmd: { input: { Key: string } }) => {
@@ -70,7 +75,7 @@ const { generatePresignedUploadUrl } = await import('@/lib/server/storage/s3')
 const KEY = 'uploads/abc123/photo.png'
 const CT = 'image/png'
 
-function verifySig(uploadUrl: string, key: string, ct: string, secret: string): boolean {
+function verifySig(uploadUrl: string, key: string, ct: string, secret: Buffer | string): boolean {
   const url = new URL(uploadUrl)
   const exp = Number(url.searchParams.get('exp'))
   const sig = url.searchParams.get('sig')
@@ -192,7 +197,7 @@ describe('Case C — S3_PROXY=true, no S3_PUBLIC_URL (Docker self-hosted / ngrok
 
   it('upload URL HMAC signature is valid', async () => {
     const { uploadUrl } = await generatePresignedUploadUrl(KEY, CT)
-    expect(verifySig(uploadUrl, KEY, CT, 'secret-key')).toBe(true)
+    expect(verifySig(uploadUrl, KEY, CT, PROXY_UPLOAD_KEY)).toBe(true)
   })
 
   it('returns a BASE_URL/api/storage publicUrl', async () => {
@@ -252,7 +257,7 @@ describe('Case D — S3_PROXY=true, S3_PUBLIC_URL set (proxy uploads, CDN downlo
 
   it('upload URL HMAC is still valid (signed against correct key path)', async () => {
     const { uploadUrl } = await generatePresignedUploadUrl(KEY, CT)
-    expect(verifySig(uploadUrl, KEY, CT, 'secret-key')).toBe(true)
+    expect(verifySig(uploadUrl, KEY, CT, PROXY_UPLOAD_KEY)).toBe(true)
   })
 
   it('does not call getSignedUrl', async () => {

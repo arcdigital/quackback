@@ -54,7 +54,6 @@ export async function readBodyWithLimit(
 export async function handleProxyUpload({ request }: { request: Request }): Promise<Response> {
   const {
     isS3Configured,
-    getS3Config,
     uploadObject,
     verifyProxyUploadToken,
     isAllowedImageType,
@@ -76,9 +75,8 @@ export async function handleProxyUpload({ request }: { request: Request }): Prom
 
   const exp = url.searchParams.get('exp')
   const sig = url.searchParams.get('sig')
-  const { secretAccessKey } = getS3Config()
 
-  if (!verifyProxyUploadToken(secretAccessKey, key, ct, exp, sig)) {
+  if (!verifyProxyUploadToken(key, ct, exp, sig)) {
     return Response.json({ error: 'Invalid or expired upload token' }, { status: 401 })
   }
 
