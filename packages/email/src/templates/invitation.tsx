@@ -18,18 +18,14 @@ export function InvitationEmail({
   logoUrl,
 }: InvitationEmailProps) {
   return (
-    <EmailLayout
-      preview={`Join ${organizationName} on Quackback`}
-      logoUrl={logoUrl}
-      logoAlt={organizationName}
-    >
+    <EmailLayout preview={`Join ${organizationName}`} logoUrl={logoUrl} logoAlt={organizationName}>
       {/* Content */}
       <Heading style={typography.h1}>
         {inviteeName ? `Hi ${inviteeName}, you're invited!` : "You're invited!"}
       </Heading>
       <Text style={typography.text}>
-        <strong>{invitedByName}</strong> has invited you to join <strong>{organizationName}</strong>{' '}
-        on Quackback.
+        <strong>{invitedByName}</strong> has invited you to join <strong>{organizationName}</strong>
+        .
       </Text>
 
       {/* CTA Button */}

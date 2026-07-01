@@ -46,6 +46,7 @@ describe('email templates use brand logo when provided', () => {
       MagicLinkEmail({
         signInUrl: 'https://example.com/verify-magic-link?token=abc',
         code: '123456',
+        workspaceName: 'Acme',
         logoUrl: BRAND_LOGO,
       })
     )
@@ -55,7 +56,11 @@ describe('email templates use brand logo when provided', () => {
 
   it('PasswordResetEmail renders brand logo', async () => {
     const html = await render(
-      PasswordResetEmail({ resetLink: 'https://example.com/reset', logoUrl: BRAND_LOGO })
+      PasswordResetEmail({
+        resetLink: 'https://example.com/reset',
+        workspaceName: 'Acme',
+        logoUrl: BRAND_LOGO,
+      })
     )
     expect(html).toContain(BRAND_LOGO)
     expect(html).not.toContain(DEFAULT_LOGO_URL)
@@ -156,13 +161,16 @@ describe('email templates fall back to default logo when logoUrl not provided', 
       MagicLinkEmail({
         signInUrl: 'https://example.com/verify-magic-link?token=abc',
         code: '123456',
+        workspaceName: 'Acme',
       })
     )
     expect(html).toContain(DEFAULT_LOGO_URL)
   })
 
   it('PasswordResetEmail renders default logo', async () => {
-    const html = await render(PasswordResetEmail({ resetLink: 'https://example.com/reset' }))
+    const html = await render(
+      PasswordResetEmail({ resetLink: 'https://example.com/reset', workspaceName: 'Acme' })
+    )
     expect(html).toContain(DEFAULT_LOGO_URL)
   })
 

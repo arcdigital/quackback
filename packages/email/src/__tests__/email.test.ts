@@ -97,6 +97,7 @@ describe('console mode returns { sent: false }', () => {
       to: 'test@example.com',
       signInUrl: 'https://example.com/verify-magic-link?token=abc',
       code: '123456',
+      workspaceName: 'TestWorkspace',
     })
     expect(result).toEqual({ sent: false })
   })
@@ -132,6 +133,7 @@ describe('console mode returns { sent: false }', () => {
     const result = await sendPasswordResetEmail({
       to: 'test@example.com',
       resetLink: 'https://example.com/auth/reset-password?token=abc',
+      workspaceName: 'TestWorkspace',
     })
     expect(result).toEqual({ sent: false })
   })

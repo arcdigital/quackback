@@ -48,7 +48,7 @@ export async function requestEmailSignin(opts: {
       body: { email: opts.email, type: 'sign-in' },
       headers,
     }),
-    db.query.settings.findFirst({ columns: { logoKey: true } }),
+    db.query.settings.findFirst({ columns: { logoKey: true, name: true } }),
   ])
 
   const otp = getOTP(opts.email)
@@ -63,6 +63,7 @@ export async function requestEmailSignin(opts: {
     to: opts.email,
     signInUrl,
     code: otp,
+    workspaceName: settings?.name ?? 'your workspace',
     logoUrl: getEmailSafeUrl(settings?.logoKey) ?? undefined,
   })
 }

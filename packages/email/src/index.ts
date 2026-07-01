@@ -205,7 +205,7 @@ export async function sendInvitationEmail(params: SendInvitationParams): Promise
 
   return sendEmail({
     to,
-    subject: `You've been invited to join ${workspaceName} on Quackback`,
+    subject: `You've been invited to join ${workspaceName}`,
     react: InvitationEmail({
       invitedByName,
       inviteeName,
@@ -271,7 +271,7 @@ export async function sendWelcomeEmail(params: SendWelcomeParams): Promise<Email
 
   return sendEmail({
     to,
-    subject: `Welcome to ${workspaceName} on Quackback!`,
+    subject: `Welcome to ${workspaceName}!`,
     react: WelcomeEmail({ name, workspaceName, dashboardUrl, logoUrl }),
   })
 }
@@ -284,11 +284,12 @@ interface SendMagicLinkParams {
   to: string
   signInUrl: string
   code: string
+  workspaceName: string
   logoUrl?: string
 }
 
 export async function sendMagicLinkEmail(params: SendMagicLinkParams): Promise<EmailResult> {
-  const { to, signInUrl, code, logoUrl } = params
+  const { to, signInUrl, code, workspaceName, logoUrl } = params
 
   if (getProvider() === 'console') {
     log.debug(
@@ -301,8 +302,8 @@ export async function sendMagicLinkEmail(params: SendMagicLinkParams): Promise<E
   log.debug('sending sign-in email')
   return sendEmail({
     to,
-    subject: 'Your Quackback sign-in link',
-    react: MagicLinkEmail({ signInUrl, code, logoUrl }),
+    subject: `Your ${workspaceName} sign-in link`,
+    react: MagicLinkEmail({ signInUrl, code, workspaceName, logoUrl }),
   })
 }
 
@@ -313,13 +314,14 @@ export async function sendMagicLinkEmail(params: SendMagicLinkParams): Promise<E
 interface SendPasswordResetParams {
   to: string
   resetLink: string
+  workspaceName: string
   logoUrl?: string
 }
 
 export async function sendPasswordResetEmail(
   params: SendPasswordResetParams
 ): Promise<EmailResult> {
-  const { to, resetLink, logoUrl } = params
+  const { to, resetLink, workspaceName, logoUrl } = params
 
   if (getProvider() === 'console') {
     log.debug(
@@ -332,8 +334,8 @@ export async function sendPasswordResetEmail(
   log.debug('sending password reset email')
   return sendEmail({
     to,
-    subject: 'Reset your Quackback password',
-    react: PasswordResetEmail({ resetLink, logoUrl }),
+    subject: `Reset your ${workspaceName} password`,
+    react: PasswordResetEmail({ resetLink, workspaceName, logoUrl }),
   })
 }
 

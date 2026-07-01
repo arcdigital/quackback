@@ -51,6 +51,7 @@ describe('sendEmail anon-domain delivery guard', () => {
       to: `temp-ni7j5mnendrdtsjwbesk4mubz4jzszhj@${ANON_EMAIL_DOMAIN}`,
       signInUrl: 'https://example.com/verify-magic-link?token=abc',
       code: '123456',
+      workspaceName: 'Acme',
     })
 
     expect(sendSpy).not.toHaveBeenCalled()
@@ -62,6 +63,7 @@ describe('sendEmail anon-domain delivery guard', () => {
       to: 'temp-abc@ANON.QUACKBACK.IO',
       signInUrl: 'https://example.com/verify-magic-link?token=abc',
       code: '123456',
+      workspaceName: 'Acme',
     })
 
     expect(sendSpy).not.toHaveBeenCalled()
@@ -73,6 +75,7 @@ describe('sendEmail anon-domain delivery guard', () => {
       to: 'jane@example.com',
       signInUrl: 'https://example.com/verify-magic-link?token=abc',
       code: '123456',
+      workspaceName: 'Acme',
     })
 
     expect(sendSpy).toHaveBeenCalledTimes(1)

@@ -277,9 +277,16 @@ async function createAuth() {
           return
         }
         const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
-        const settings = await db.query.settings.findFirst({ columns: { logoKey: true } })
+        const settings = await db.query.settings.findFirst({
+          columns: { logoKey: true, name: true },
+        })
         const logoUrl = getEmailSafeUrl(settings?.logoKey) ?? undefined
-        await sendPasswordResetEmail({ to: user.email, resetLink: url, logoUrl })
+        await sendPasswordResetEmail({
+          to: user.email,
+          resetLink: url,
+          workspaceName: settings?.name ?? 'your workspace',
+          logoUrl,
+        })
       },
       resetPasswordTokenExpiresIn: 60 * 60 * 24, // 24 hours
     },
