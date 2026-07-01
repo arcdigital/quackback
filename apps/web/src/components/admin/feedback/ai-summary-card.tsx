@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { SparklesIcon, ChevronDownIcon } from '@heroicons/react/24/solid'
+import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { cn } from '@/lib/shared/utils'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { TimeAgo } from '@/components/ui/time-ago'
@@ -15,9 +16,20 @@ interface PostSummaryJson {
 interface AiSummaryCardProps {
   summaryJson: PostSummaryJson | null
   summaryUpdatedAt: Date | string | null
+  /**
+   * When provided, renders a regenerate button that calls this handler.
+   * Omit for read-only contexts (e.g. merge preview).
+   */
+  onRegenerate?: () => void
+  isRegenerating?: boolean
 }
 
-export function AiSummaryCard({ summaryJson, summaryUpdatedAt }: AiSummaryCardProps) {
+export function AiSummaryCard({
+  summaryJson,
+  summaryUpdatedAt,
+  onRegenerate,
+  isRegenerating = false,
+}: AiSummaryCardProps) {
   const [isOpen, setIsOpen] = useState(true)
 
   // Generating state: no summary yet
@@ -39,27 +51,38 @@ export function AiSummaryCard({ summaryJson, summaryUpdatedAt }: AiSummaryCardPr
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className="border border-border/30 rounded-lg bg-muted/5">
         {/* Header */}
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/10 transition-colors rounded-t-lg"
-          >
-            <SparklesIcon className="size-3.5 text-amber-500/80 shrink-0" />
-            <p className="text-xs font-medium text-muted-foreground/70">AI Summary</p>
-            <div className="flex-1" />
-            {summaryUpdatedAt && (
-              <span className="text-xs text-muted-foreground">
-                Updated <TimeAgo date={summaryUpdatedAt} />
-              </span>
-            )}
-            <ChevronDownIcon
-              className={cn(
-                'size-3.5 text-muted-foreground transition-transform duration-200',
-                isOpen && 'rotate-180'
+        <div className="flex w-full items-center rounded-t-lg hover:bg-muted/10 transition-colors">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="flex flex-1 items-center gap-2 px-4 py-3 text-left">
+              <SparklesIcon className="size-3.5 text-amber-500/80 shrink-0" />
+              <p className="text-xs font-medium text-muted-foreground/70">AI Summary</p>
+              <div className="flex-1" />
+              {summaryUpdatedAt && (
+                <span className="text-xs text-muted-foreground">
+                  Updated <TimeAgo date={summaryUpdatedAt} />
+                </span>
               )}
-            />
-          </button>
-        </CollapsibleTrigger>
+              <ChevronDownIcon
+                className={cn(
+                  'size-3.5 text-muted-foreground transition-transform duration-200',
+                  isOpen && 'rotate-180'
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              title="Regenerate summary"
+              aria-label="Regenerate summary"
+              className="shrink-0 p-2 mr-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowPathIcon className={cn('size-3.5', isRegenerating && 'animate-spin')} />
+            </button>
+          )}
+        </div>
 
         {/* Body */}
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">

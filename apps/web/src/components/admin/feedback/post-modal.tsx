@@ -53,6 +53,7 @@ import {
 import { usePostExternalLinks } from '@/lib/client/hooks/use-post-external-links-query'
 import { usePostDetailKeyboard } from '@/lib/client/hooks/use-post-detail-keyboard'
 import { addPostToRoadmapFn, removePostFromRoadmapFn } from '@/lib/server/functions/roadmaps'
+import { regeneratePostSummaryFn } from '@/lib/server/functions/summary'
 import { useRouterState } from '@tanstack/react-router'
 import {
   type PostId,
@@ -111,6 +112,7 @@ function PostModalContent({
   // UI state
   const [isUpdating, setIsUpdating] = useState(false)
   const [pendingRoadmapId, setPendingRoadmapId] = useState<string | null>(null)
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false)
   const [showMergeDialog, setShowMergeDialog] = useState(false)
   const [showMergeOthersDialog, setShowMergeOthersDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -226,6 +228,19 @@ function PostModalContent({
       queryClient.invalidateQueries({ queryKey: inboxKeys.detail(post.id as PostId) })
     } finally {
       setPendingRoadmapId(null)
+    }
+  }
+
+  const handleRegenerateSummary = async () => {
+    setIsRegeneratingSummary(true)
+    try {
+      await regeneratePostSummaryFn({ data: { postId: post.id } })
+      await queryClient.invalidateQueries({ queryKey: inboxKeys.detail(post.id as PostId) })
+      toast.success('AI summary regenerated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to regenerate summary')
+    } finally {
+      setIsRegeneratingSummary(false)
     }
   }
 
@@ -389,6 +404,8 @@ function PostModalContent({
                   <AiSummaryCard
                     summaryJson={post.summaryJson}
                     summaryUpdatedAt={post.summaryUpdatedAt ?? null}
+                    onRegenerate={handleRegenerateSummary}
+                    isRegenerating={isRegeneratingSummary}
                   />
                 )}
                 <SimilarPostsCard postId={postId} onNavigateToPost={onNavigateToPost} />
