@@ -31,8 +31,11 @@ export const regeneratePostSummaryFn = createServerFn({ method: 'POST' })
     try {
       await requireAuth({ roles: ['admin', 'member'] })
 
-      await generateAndSavePostSummary(data.postId as PostId)
-      return { success: true }
+      const generated = await generateAndSavePostSummary(data.postId as PostId)
+      // `generated=false` means the work was skipped — most commonly because AI
+      // is not configured. Report it so the caller can surface honest feedback
+      // instead of a misleading success toast.
+      return { success: true, generated }
     } catch (error) {
       log.error({ err: error }, 'regenerate post summary failed')
       throw error

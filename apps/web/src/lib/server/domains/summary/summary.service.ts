@@ -66,13 +66,18 @@ interface PostSummaryJson {
 /**
  * Generate and save an AI summary for a post.
  * Fetches the post title, content, and comments, then calls the LLM.
+ *
+ * Returns `true` when a summary was generated and saved, `false` when the work
+ * was skipped (AI not configured, post missing, or the model response was
+ * unusable). Callers that trigger this on-demand use the flag to give honest
+ * feedback; the event hook and sweep ignore it.
  */
-export async function generateAndSavePostSummary(postId: PostId): Promise<void> {
+export async function generateAndSavePostSummary(postId: PostId): Promise<boolean> {
   await enforceAiTokenBudget()
 
   const openai = getOpenAI()
   const model = getChatModel('summary')
-  if (!openai || !model) return
+  if (!openai || !model) return false
 
   // Fetch post (include existing summary for continuity on updates)
   const post = await db.query.posts.findFirst({
@@ -81,7 +86,7 @@ export async function generateAndSavePostSummary(postId: PostId): Promise<void> 
   })
   if (!post) {
     log.warn({ post_id: postId }, 'post not found for summary')
-    return
+    return false
   }
 
   // Fetch comments (lightweight: just content and author name)
@@ -133,7 +138,7 @@ export async function generateAndSavePostSummary(postId: PostId): Promise<void> 
   const responseText = completion?.text
   if (!responseText) {
     log.error({ post_id: postId }, 'empty summary response')
-    return
+    return false
   }
 
   let summaryJson: PostSummaryJson
@@ -144,13 +149,13 @@ export async function generateAndSavePostSummary(postId: PostId): Promise<void> 
       { post_id: postId, response_length: responseText.length },
       'failed to parse summary json'
     )
-    return
+    return false
   }
 
   // Validate shape
   if (typeof summaryJson.summary !== 'string') {
     log.error({ post_id: postId }, 'invalid summary shape')
-    return
+    return false
   }
 
   // Coerce arrays
@@ -172,6 +177,7 @@ export async function generateAndSavePostSummary(postId: PostId): Promise<void> 
     .where(eq(posts.id, postId))
 
   log.info({ post_id: postId, comment_count: postComments.length }, 'post summary generated')
+  return true
 }
 
 const SWEEP_BATCH_SIZE = 50

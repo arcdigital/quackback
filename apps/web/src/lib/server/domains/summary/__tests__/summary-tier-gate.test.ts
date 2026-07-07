@@ -71,13 +71,14 @@ describe('generateAndSavePostSummary — token budget gate', () => {
 
   it('does not throw when budget is null (OSS unlimited)', async () => {
     vi.mocked(getTierLimits).mockResolvedValue(OSS_TIER_LIMITS)
-    // openai is null so it returns early — we only care no TierLimitError fires.
-    await expect(generateAndSavePostSummary('post_x' as PostId)).resolves.toBeUndefined()
+    // openai is null so it returns false (work skipped) — we only care that no
+    // TierLimitError fires.
+    await expect(generateAndSavePostSummary('post_x' as PostId)).resolves.toBe(false)
   })
 
   it('does not throw when usage is below budget', async () => {
     vi.mocked(getTierLimits).mockResolvedValue({ ...OSS_TIER_LIMITS, aiTokensPerMonth: 1_000_000 })
     vi.mocked(aiTokensThisMonth).mockResolvedValue(500_000)
-    await expect(generateAndSavePostSummary('post_x' as PostId)).resolves.toBeUndefined()
+    await expect(generateAndSavePostSummary('post_x' as PostId)).resolves.toBe(false)
   })
 })

@@ -32,17 +32,34 @@ export function AiSummaryCard({
 }: AiSummaryCardProps) {
   const [isOpen, setIsOpen] = useState(true)
 
-  // Generating state: no summary yet
+  // No summary yet. In interactive contexts (onRegenerate provided) offer a
+  // Generate button so an admin can create one on demand — this covers posts
+  // that predate summaries or were imported without one. Read-only contexts
+  // (merge preview) just show the passive "being generated" hint.
   if (!summaryJson) {
     return (
       <div className="border border-border/30 rounded-lg bg-muted/5">
         <div className="flex items-center gap-2 px-4 py-3">
           <SparklesIcon className="size-3.5 text-amber-500/80 shrink-0" />
           <p className="text-xs font-medium text-muted-foreground/70">AI Summary</p>
+          <div className="flex-1" />
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowPathIcon className={cn('size-3.5', isRegenerating && 'animate-spin')} />
+              {isRegenerating ? 'Generating…' : 'Generate'}
+            </button>
+          )}
         </div>
-        <div className="px-4 pb-3">
-          <p className="text-sm text-muted-foreground italic">Summary is being generated...</p>
-        </div>
+        {isRegenerating && (
+          <div className="px-4 pb-3">
+            <p className="text-sm text-muted-foreground italic">Summary is being generated...</p>
+          </div>
+        )}
       </div>
     )
   }

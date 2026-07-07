@@ -162,6 +162,10 @@ function PostModalContent({
     setContentJson(getInitialContentJson(post))
     setShowMergeDialog(false)
     setShowMergeOthersDialog(false)
+    // The spinner is a single shared boolean, not post-scoped; clear it on
+    // navigation so an in-flight regeneration on the previous card doesn't
+    // leave the button stuck spinning on the new one.
+    setIsRegeneratingSummary(false)
   }, [post.id, post.title, post.contentJson])
 
   // Keyboard navigation
@@ -232,11 +236,20 @@ function PostModalContent({
   }
 
   const handleRegenerateSummary = async () => {
+    // Capture the target id now: the user may navigate to another card while
+    // the request is in flight, and `post` would then point at the new card.
+    const targetPostId = post.id as PostId
+    const hadSummary = Boolean(post.summaryJson)
     setIsRegeneratingSummary(true)
     try {
-      await regeneratePostSummaryFn({ data: { postId: post.id } })
-      await queryClient.invalidateQueries({ queryKey: inboxKeys.detail(post.id as PostId) })
-      toast.success('AI summary regenerated')
+      const { generated } = await regeneratePostSummaryFn({ data: { postId: targetPostId } })
+      await queryClient.invalidateQueries({ queryKey: inboxKeys.detail(targetPostId) })
+      if (generated) {
+        toast.success(hadSummary ? 'AI summary regenerated' : 'AI summary generated')
+      } else {
+        // Service skipped the work — almost always because AI isn't configured.
+        toast.error('AI is not configured, so no summary could be generated.')
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to regenerate summary')
     } finally {
@@ -398,16 +411,15 @@ function PostModalContent({
                 onImageUpload={uploadImage}
               />
 
-              {/* AI section — summary + similar posts */}
+              {/* AI section — summary + similar posts. The card renders even
+                  without a summary so an admin can generate one on demand. */}
               <div className="mt-8 space-y-3">
-                {post.summaryJson && (
-                  <AiSummaryCard
-                    summaryJson={post.summaryJson}
-                    summaryUpdatedAt={post.summaryUpdatedAt ?? null}
-                    onRegenerate={handleRegenerateSummary}
-                    isRegenerating={isRegeneratingSummary}
-                  />
-                )}
+                <AiSummaryCard
+                  summaryJson={post.summaryJson ?? null}
+                  summaryUpdatedAt={post.summaryUpdatedAt ?? null}
+                  onRegenerate={handleRegenerateSummary}
+                  isRegenerating={isRegeneratingSummary}
+                />
                 <SimilarPostsCard postId={postId} onNavigateToPost={onNavigateToPost} />
               </div>
             </div>
