@@ -26,17 +26,34 @@ vi.mock('@/lib/server/db', () => ({
       },
     }),
     delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
+    // getChangelogById → getChangelogTagsForEntries issues a tag select; a
+    // thenable chain resolving to [] covers it regardless of builder shape.
+    select: () => anySelectChain(),
   },
   changelogEntries: { id: 'id', publishedAt: 'published_at', deletedAt: 'deleted_at' },
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
+  changelogEntryTags: { changelogEntryId: 'changelog_entry_id', tagId: 'tag_id' },
   posts: { id: 'posts.id' },
   principal: { id: 'principal.id' },
   postStatuses: { id: 'postStatuses.id' },
+  tags: { id: 'tags.id', name: 'tags.name', color: 'tags.color', deletedAt: 'tags.deleted_at' },
   eq: vi.fn(),
   and: vi.fn(),
+  asc: vi.fn(),
   isNull: vi.fn(),
   inArray: vi.fn(),
 }))
+
+// Thenable select-chain: every builder method returns the chain, and awaiting
+// resolves to `rows`. Covers `.where()`-terminal and `.where().orderBy()` alike.
+function anySelectChain(rows: unknown[] = []): Record<string, unknown> {
+  const chain: Record<string, unknown> = {}
+  for (const m of ['from', 'innerJoin', 'leftJoin', 'where', 'orderBy', 'limit']) {
+    chain[m] = () => chain
+  }
+  chain.then = (resolve: (v: unknown[]) => unknown) => resolve(rows)
+  return chain
+}
 
 vi.mock('@/lib/server/content/rehost-images', () => ({
   rehostExternalImages: vi.fn(async (json: unknown) => json),

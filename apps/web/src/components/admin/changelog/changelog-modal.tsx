@@ -21,7 +21,7 @@ import { ChangelogMetadataSidebar } from './changelog-metadata-sidebar'
 import { ChangelogMetadataSidebarContent } from './changelog-metadata-sidebar-content'
 import { toPublishState, type PublishState } from '@/lib/shared/schemas/changelog'
 import { Route } from '@/routes/admin/changelog'
-import { type ChangelogId, type PostId } from '@quackback/ids'
+import { type ChangelogId, type PostId, type TagId } from '@quackback/ids'
 import type { JSONContent } from '@tiptap/react'
 
 interface ChangelogModalProps {
@@ -36,6 +36,7 @@ interface ChangelogModalContentProps {
 function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps) {
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
   const [linkedPostIds, setLinkedPostIds] = useState<PostId[]>([])
+  const [tagIds, setTagIds] = useState<TagId[]>([])
   const [publishState, setPublishState] = useState<PublishState>({ type: 'draft' })
   const [displayDateOverride, setDisplayDateOverride] = useState<Date | undefined>(undefined)
   const [displayDateTouched, setDisplayDateTouched] = useState(false)
@@ -67,6 +68,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
       form.setValue('content', entry.content)
       setContentJson(entry.contentJson as JSONContent | null)
       setLinkedPostIds(entry.linkedPosts.map((p) => p.id))
+      setTagIds(entry.tags.map((t) => t.id))
       setPublishState(toPublishState(entry.status, entry.publishedAt))
       setDisplayDateOverride(entry.displayDate ? new Date(entry.displayDate) : undefined)
       setDisplayDateTouched(false)
@@ -108,6 +110,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
         content: data.content,
         contentJson: contentJson as TiptapContent | null,
         linkedPostIds,
+        tagIds,
         publishState,
         ...(displayDatePayload !== undefined && { displayDate: displayDatePayload }),
       },
@@ -174,6 +177,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
             onPublishStateChange={setPublishState}
             linkedPostIds={linkedPostIds}
             onLinkedPostsChange={setLinkedPostIds}
+            tagIds={tagIds}
+            onTagsChange={setTagIds}
             authorName={entry?.author?.name}
             publishedAt={entry?.publishedAt}
             displayDateValue={displayDateOverride}
@@ -206,6 +211,8 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                   onPublishStateChange={setPublishState}
                   linkedPostIds={linkedPostIds}
                   onLinkedPostsChange={setLinkedPostIds}
+                  tagIds={tagIds}
+                  onTagsChange={setTagIds}
                   authorName={entry?.author?.name}
                   publishedAt={entry?.publishedAt}
                   displayDateValue={displayDateOverride}

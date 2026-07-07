@@ -47,6 +47,7 @@ vi.mock('@/lib/server/db', () => ({
     viewCount: 'view_count',
   },
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
+  changelogEntryTags: { changelogEntryId: 'changelog_entry_id', tagId: 'tag_id' },
   posts: {
     id: 'posts.id',
     title: 'posts.title',
@@ -63,9 +64,11 @@ vi.mock('@/lib/server/db', () => ({
     deletedAt: 'boards.deletedAt',
   },
   postStatuses: { id: 'id' },
+  tags: { id: 'tags.id', name: 'tags.name', color: 'tags.color', deletedAt: 'tags.deleted_at' },
   eq: vi.fn((col, val) => ({ kind: 'eq', col, val })),
   and: vi.fn((...args: unknown[]) => ({ kind: 'and', args })),
   or: vi.fn((...args: unknown[]) => ({ kind: 'or', args })),
+  asc: vi.fn((col) => ({ kind: 'asc', col })),
   isNull: vi.fn((col) => ({ kind: 'isNull', col })),
   isNotNull: vi.fn((col) => ({ kind: 'isNotNull', col })),
   lt: vi.fn((col, val) => ({ kind: 'lt', col, val })),
@@ -162,7 +165,11 @@ function chainResolving(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
   chain.from = () => chain
   chain.innerJoin = () => chain
-  chain.where = () => Promise.resolve(rows)
+  // Thenable so it resolves at `.where()` (linked posts) or `.where().orderBy()`
+  // (the tag fetch, if this same chain is reused for it).
+  chain.where = () => chain
+  chain.orderBy = () => chain
+  chain.then = (resolve: (v: unknown[]) => unknown) => resolve(rows)
   return chain
 }
 
@@ -175,9 +182,23 @@ function entriesListChain(rows: unknown[]): unknown {
   return chain
 }
 
+// Thenable default chain resolving to []; used for the trailing tag select
+// (getChangelogTagsForEntries) that runs after the linked-post select.
+function emptyChain(): unknown {
+  const chain: Record<string, unknown> = {}
+  chain.from = () => chain
+  chain.innerJoin = () => chain
+  chain.where = () => chain
+  chain.orderBy = () => chain
+  chain.then = (resolve: (v: unknown[]) => unknown) => resolve([])
+  return chain
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockStatusesFindMany.mockResolvedValue([])
+  // Default for any select not explicitly queued (e.g. the tag fetch).
+  mockSelect.mockReturnValue(emptyChain())
 })
 
 describe('getPublicChangelogById — effective display date', () => {

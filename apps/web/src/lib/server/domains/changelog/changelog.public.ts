@@ -16,9 +16,10 @@ import {
   inArray,
   sql,
 } from '@/lib/server/db'
-import type { ChangelogId, StatusId } from '@quackback/ids'
+import type { ChangelogId, StatusId, TagId } from '@quackback/ids'
 import { NotFoundError } from '@/lib/shared/errors'
 import { computeStatus } from './changelog.service'
+import { changelogHasAnyTag, getChangelogTagsForEntries } from './changelog.tags'
 import type { PublicChangelogEntry, PublicChangelogListResult } from './changelog.types'
 
 const effectiveDisplayDate = sql<Date>`coalesce(${changelogEntries.displayDate}, ${changelogEntries.publishedAt})`
@@ -135,6 +136,8 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
     statuses.forEach((s) => statusMap.set(s.id, { name: s.name, color: s.color }))
   }
 
+  const tagsMap = await getChangelogTagsForEntries([entry.id])
+
   return {
     id: entry.id,
     title: entry.title,
@@ -148,6 +151,7 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
       boardSlug: lp.boardSlug,
       status: lp.postStatusId ? (statusMap.get(lp.postStatusId) ?? null) : null,
     })),
+    tags: tagsMap.get(entry.id) ?? [],
   }
 }
 
@@ -160,11 +164,17 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
 export async function listPublicChangelogs(params: {
   cursor?: string
   limit?: number
+  tagIds?: TagId[]
 }): Promise<PublicChangelogListResult> {
-  const { cursor, limit = 20 } = params
+  const { cursor, limit = 20, tagIds } = params
   const now = new Date()
 
   const conditions = publicChangelogConditions(now)
+
+  // Optional tag filter: entries carrying at least one of the requested tags.
+  if (tagIds && tagIds.length > 0) {
+    conditions.push(changelogHasAnyTag(tagIds))
+  }
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:
   // if an admin deleted the cursor row between page load and "Load
@@ -256,6 +266,9 @@ export async function listPublicChangelogs(params: {
     statuses.forEach((s) => publicStatusMap.set(s.id, { name: s.name, color: s.color }))
   }
 
+  // Batch-fetch tags for all entries (avoids N+1)
+  const tagsMap = await getChangelogTagsForEntries(entryIds)
+
   // Transform to output format (no author info for public view)
   const result: PublicChangelogEntry[] = items
     .filter((entry) => entry.publishedAt !== null)
@@ -274,6 +287,7 @@ export async function listPublicChangelogs(params: {
           boardSlug: lp.boardSlug,
           status: lp.postStatusId ? (publicStatusMap.get(lp.postStatusId) ?? null) : null,
         })),
+        tags: tagsMap.get(entry.id) ?? [],
       }
     })
 

@@ -1,10 +1,14 @@
+import { useQuery } from '@tanstack/react-query'
 import { FilterSection } from '@/components/shared/filter-section'
+import { adminQueries } from '@/lib/client/queries/admin'
 import { cn } from '@/lib/shared/utils'
 import type { ChangelogStatusFilter } from './use-changelog-filters'
 
 interface ChangelogFiltersProps {
   status: ChangelogStatusFilter
   onStatusChange: (status: ChangelogStatusFilter) => void
+  tagIds: string[]
+  onTagsChange: (tagIds: string[]) => void
 }
 
 const CHANGELOG_STATUSES = [
@@ -14,7 +18,22 @@ const CHANGELOG_STATUSES = [
   { id: 'published', name: 'Published', color: '#22c55e' }, // green
 ] as const
 
-export function ChangelogFiltersPanel({ status, onStatusChange }: ChangelogFiltersProps) {
+export function ChangelogFiltersPanel({
+  status,
+  onStatusChange,
+  tagIds,
+  onTagsChange,
+}: ChangelogFiltersProps) {
+  const { data: allTags = [] } = useQuery(adminQueries.tags())
+
+  const toggleTag = (tagId: string) => {
+    if (tagIds.includes(tagId)) {
+      onTagsChange(tagIds.filter((id) => id !== tagId))
+    } else {
+      onTagsChange([...tagIds, tagId])
+    }
+  }
+
   return (
     <div className="space-y-0">
       <FilterSection title="Status">
@@ -50,6 +69,40 @@ export function ChangelogFiltersPanel({ status, onStatusChange }: ChangelogFilte
           })}
         </div>
       </FilterSection>
+
+      {allTags.length > 0 && (
+        <FilterSection title="Tags">
+          <div className="space-y-1" role="listbox" aria-label="Tag filter" aria-multiselectable>
+            {allTags.map((tag) => {
+              const isSelected = tagIds.includes(tag.id)
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => toggleTag(tag.id)}
+                  className={cn(
+                    'w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors',
+                    isSelected
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{tag.name}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </FilterSection>
+      )}
     </div>
   )
 }

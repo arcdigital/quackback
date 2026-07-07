@@ -7,6 +7,8 @@ import {
   ChevronUpIcon,
   UserIcon,
   InformationCircleIcon,
+  TagIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { CheckIcon } from '@heroicons/react/24/solid'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -16,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import { useQuery } from '@tanstack/react-query'
 import { searchShippedPostsFn } from '@/lib/server/functions/changelog'
+import { adminQueries } from '@/lib/client/queries/admin'
 import { TimeAgo } from '@/components/ui/time-ago'
 import {
   SidebarRow,
@@ -26,7 +29,7 @@ import {
   type StatusOption,
 } from '@/components/shared/sidebar-primitives'
 import { cn } from '@/lib/shared/utils'
-import type { PostId } from '@quackback/ids'
+import type { PostId, TagId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
 interface ChangelogMetadataSidebarContentProps {
@@ -34,6 +37,8 @@ interface ChangelogMetadataSidebarContentProps {
   onPublishStateChange: (state: PublishState) => void
   linkedPostIds: PostId[]
   onLinkedPostsChange: (postIds: PostId[]) => void
+  tagIds: TagId[]
+  onTagsChange: (tagIds: TagId[]) => void
   authorName?: string | null
   publishedAt?: string | null
   displayDateValue?: Date
@@ -52,6 +57,8 @@ export function ChangelogMetadataSidebarContent({
   onPublishStateChange,
   linkedPostIds,
   onLinkedPostsChange,
+  tagIds,
+  onTagsChange,
   authorName,
   publishedAt,
   displayDateValue,
@@ -59,7 +66,11 @@ export function ChangelogMetadataSidebarContent({
   onDisplayDateClear = () => {},
 }: ChangelogMetadataSidebarContentProps) {
   const [postsOpen, setPostsOpen] = useState(false)
+  const [tagsPickerOpen, setTagsPickerOpen] = useState(false)
   const [search, setSearch] = useState('')
+
+  // All tags (shared pool with posts) for the picker
+  const { data: allTags = [] } = useQuery(adminQueries.tags())
 
   // Default scheduled time to tomorrow at 9am
   const [scheduledDateTime, setScheduledDateTime] = useState<Date>(() => {
@@ -125,6 +136,16 @@ export function ChangelogMetadataSidebarContent({
 
   const handleRemovePost = (postId: PostId) => {
     onLinkedPostsChange(linkedPostIds.filter((id) => id !== postId))
+  }
+
+  const selectedTags = allTags.filter((t) => tagIds.includes(t.id as TagId))
+
+  const handleToggleTag = (tagId: TagId) => {
+    if (tagIds.includes(tagId)) {
+      onTagsChange(tagIds.filter((id) => id !== tagId))
+    } else {
+      onTagsChange([...tagIds, tagId])
+    }
   }
 
   return (
@@ -291,6 +312,92 @@ export function ChangelogMetadataSidebarContent({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground/60 italic pl-6">No posts linked yet</p>
+        )}
+      </div>
+
+      {/* Tags - shared pool with posts; used to scope changelogs (e.g. per product) */}
+      <div className="space-y-2">
+        <SidebarRow icon={<TagIcon className="h-4 w-4" />} label="Tags">
+          <Popover open={tagsPickerOpen} onOpenChange={setTagsPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'inline-flex items-center gap-0.5 px-1.5 py-0.5',
+                  'rounded-md text-[11px] font-medium',
+                  'text-muted-foreground/70 hover:text-muted-foreground',
+                  'border border-dashed border-border/60 hover:border-border',
+                  'hover:bg-muted/40',
+                  'transition-all duration-150'
+                )}
+              >
+                <PlusIcon className="h-2.5 w-2.5" />
+                Add
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0" align="end" sideOffset={4}>
+              <ScrollArea className="max-h-[250px]">
+                <div className="p-1">
+                  {allTags.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      No tags yet.
+                    </div>
+                  ) : (
+                    allTags.map((tag) => {
+                      const isSelected = tagIds.includes(tag.id as TagId)
+                      return (
+                        <div
+                          key={tag.id}
+                          onClick={() => handleToggleTag(tag.id as TagId)}
+                          className={cn(
+                            'relative flex items-center gap-2 cursor-pointer select-none rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground',
+                            isSelected && 'bg-accent/50'
+                          )}
+                        >
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          <span className="flex-1 min-w-0 truncate text-xs">{tag.name}</span>
+                          {isSelected && (
+                            <CheckIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+        </SidebarRow>
+
+        {/* Selected tags as chips */}
+        {selectedTags.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedTags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium"
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: tag.color }}
+                />
+                {tag.name}
+                <button
+                  type="button"
+                  onClick={() => handleToggleTag(tag.id as TagId)}
+                  className="text-muted-foreground/60 hover:text-foreground"
+                  aria-label={`Remove ${tag.name}`}
+                >
+                  <XMarkIcon className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground/60 italic pl-6">No tags yet</p>
         )}
       </div>
     </div>

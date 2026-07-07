@@ -3,6 +3,7 @@ import { relations } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { principal } from './auth'
 import { posts } from './posts'
+import { tags } from './boards'
 import type { TiptapContent } from '../types'
 
 export const changelogEntries = pgTable(
@@ -54,6 +55,27 @@ export const changelogEntryPosts = pgTable(
   ]
 )
 
+// Junction table for tagging changelog entries. Reuses the global `tags` pool
+// (same tags used on posts), so a "product" tag can scope both feedback and
+// changelog. Mirrors the changelog_entry_posts shape.
+export const changelogEntryTags = pgTable(
+  'changelog_entry_tags',
+  {
+    changelogEntryId: typeIdColumn('changelog')('changelog_entry_id')
+      .notNull()
+      .references(() => changelogEntries.id, { onDelete: 'cascade' }),
+    tagId: typeIdColumn('tag')('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('changelog_entry_tags_pk').on(table.changelogEntryId, table.tagId),
+    index('changelog_entry_tags_changelog_id_idx').on(table.changelogEntryId),
+    index('changelog_entry_tags_tag_id_idx').on(table.tagId),
+  ]
+)
+
 export const changelogEntriesRelations = relations(changelogEntries, ({ one, many }) => ({
   author: one(principal, {
     fields: [changelogEntries.principalId],
@@ -61,6 +83,7 @@ export const changelogEntriesRelations = relations(changelogEntries, ({ one, man
     relationName: 'changelogAuthor',
   }),
   linkedPosts: many(changelogEntryPosts),
+  tags: many(changelogEntryTags),
 }))
 
 export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ one }) => ({
@@ -71,5 +94,16 @@ export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ on
   post: one(posts, {
     fields: [changelogEntryPosts.postId],
     references: [posts.id],
+  }),
+}))
+
+export const changelogEntryTagsRelations = relations(changelogEntryTags, ({ one }) => ({
+  changelogEntry: one(changelogEntries, {
+    fields: [changelogEntryTags.changelogEntryId],
+    references: [changelogEntries.id],
+  }),
+  tag: one(tags, {
+    fields: [changelogEntryTags.tagId],
+    references: [tags.id],
   }),
 }))

@@ -6,10 +6,14 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { publicChangelogQueries } from '@/lib/client/queries/changelog'
 import { DocumentTextIcon } from '@heroicons/react/24/outline'
 
-export function ChangelogListPublic() {
+interface ChangelogListPublicProps {
+  tagIds?: string[]
+}
+
+export function ChangelogListPublic({ tagIds }: ChangelogListPublicProps = {}) {
   const intl = useIntl()
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    publicChangelogQueries.list()
+    publicChangelogQueries.list({ tagIds })
   )
 
   const entries = data?.pages.flatMap((page) => page.items) ?? []
@@ -55,6 +59,7 @@ export function ChangelogListPublic() {
             contentJson={entry.contentJson}
             publishedAt={entry.publishedAt}
             linkedPosts={entry.linkedPosts}
+            tags={entry.tags}
           />
         </div>
       ))}

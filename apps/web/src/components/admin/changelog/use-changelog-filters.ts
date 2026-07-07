@@ -7,6 +7,7 @@ export type ChangelogStatusFilter = 'all' | 'draft' | 'scheduled' | 'published'
 export interface ChangelogFilters {
   status: ChangelogStatusFilter
   search?: string
+  tags: string[]
 }
 
 export function useChangelogFilters() {
@@ -17,8 +18,9 @@ export function useChangelogFilters() {
     () => ({
       status: search.status ?? 'all',
       search: search.search,
+      tags: search.tags ?? [],
     }),
-    [search.status, search.search]
+    [search.status, search.search, search.tags]
   )
 
   const setFilters = useCallback(
@@ -32,6 +34,9 @@ export function useChangelogFilters() {
           }),
           ...('search' in updates && {
             search: updates.search || undefined,
+          }),
+          ...('tags' in updates && {
+            tags: updates.tags && updates.tags.length > 0 ? updates.tags : undefined,
           }),
         },
         replace: true,
@@ -49,8 +54,8 @@ export function useChangelogFilters() {
   }, [navigate])
 
   const hasActiveFilters = useMemo(() => {
-    return filters.status !== 'all'
-  }, [filters.status])
+    return filters.status !== 'all' || filters.tags.length > 0
+  }, [filters.status, filters.tags])
 
   return {
     filters,

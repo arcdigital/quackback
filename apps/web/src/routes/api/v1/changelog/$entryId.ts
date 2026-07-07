@@ -16,7 +16,7 @@ import {
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import type { TiptapContent } from '@/lib/server/db'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
-import type { ChangelogId } from '@quackback/ids'
+import type { ChangelogId, TagId } from '@quackback/ids'
 
 // Input validation schema
 const updateChangelogSchema = z.object({
@@ -24,6 +24,7 @@ const updateChangelogSchema = z.object({
   content: z.string().min(1).optional(),
   publishedAt: z.string().datetime().nullable().optional(),
   displayDate: z.string().datetime().nullable().optional(),
+  tagIds: z.array(z.string()).optional(),
 })
 
 function formatChangelogResponse(entry: {
@@ -35,6 +36,7 @@ function formatChangelogResponse(entry: {
   displayDate: Date | null
   createdAt: Date
   updatedAt: Date
+  tags: Array<{ id: string; name: string; color: string }>
 }) {
   return {
     id: entry.id,
@@ -44,6 +46,7 @@ function formatChangelogResponse(entry: {
     displayDate: entry.displayDate?.toISOString() || null,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
+    tags: entry.tags,
   }
 }
 
@@ -112,6 +115,7 @@ export const Route = createFileRoute('/api/v1/changelog/$entryId')({
             title: parsed.data.title,
             content: parsed.data.content,
             ...(publishState && { publishState }),
+            ...(parsed.data.tagIds !== undefined && { tagIds: parsed.data.tagIds as TagId[] }),
             ...(parsed.data.displayDate !== undefined && {
               displayDate:
                 parsed.data.displayDate === null ? null : new Date(parsed.data.displayDate),

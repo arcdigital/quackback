@@ -21,6 +21,7 @@ import {
 } from '@/lib/server/db'
 import type { BoardId, ChangelogId, PrincipalId, PostId, StatusId } from '@quackback/ids'
 import { computeStatus } from './changelog.service'
+import { changelogHasAnyTag, getChangelogTagsForEntries } from './changelog.tags'
 import type {
   ListChangelogParams,
   ChangelogEntryWithDetails,
@@ -35,7 +36,7 @@ import type {
  * @returns Paginated list of changelog entries
  */
 export async function listChangelogs(params: ListChangelogParams): Promise<ChangelogListResult> {
-  const { status = 'all', cursor, limit = 20 } = params
+  const { status = 'all', tagIds, cursor, limit = 20 } = params
   const now = new Date()
 
   // Build where conditions - always exclude soft-deleted entries
@@ -50,6 +51,11 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
   } else if (status === 'published') {
     conditions.push(isNotNull(changelogEntries.publishedAt))
     conditions.push(lte(changelogEntries.publishedAt, now))
+  }
+
+  // Filter to entries carrying at least one of the requested tags.
+  if (tagIds && tagIds.length > 0) {
+    conditions.push(changelogHasAnyTag(tagIds))
   }
 
   // Cursor-based pagination (cursor is the last entry ID)
@@ -145,6 +151,9 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
     statuses.forEach((s) => statusMap.set(s.id, { name: s.name, color: s.color }))
   }
 
+  // Batch-fetch tags for all entries (avoids N+1)
+  const tagsMap = await getChangelogTagsForEntries(entryIds)
+
   // Transform to output format
   const result: ChangelogEntryWithDetails[] = items.map((entry) => {
     const entryLinkedPosts = linkedPostsMap.get(entry.id) ?? []
@@ -165,6 +174,7 @@ export async function listChangelogs(params: ListChangelogParams): Promise<Chang
         voteCount: lp.post.voteCount,
         status: lp.post.statusId ? (statusMap.get(lp.post.statusId) ?? null) : null,
       })),
+      tags: tagsMap.get(entry.id) ?? [],
       status: computeStatus(entry.publishedAt),
     }
   })

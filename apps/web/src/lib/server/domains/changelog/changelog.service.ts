@@ -24,6 +24,7 @@ import {
   inArray,
 } from '@/lib/server/db'
 import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import { linkTagsToChangelog, replaceChangelogTags, getChangelogTags } from './changelog.tags'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { markdownToTiptapJson, contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
@@ -118,6 +119,11 @@ export async function createChangelog(
   // Link posts if provided
   if (input.linkedPostIds && input.linkedPostIds.length > 0) {
     await linkPostsToChangelog(entry.id, input.linkedPostIds)
+  }
+
+  // Attach tags if provided
+  if (input.tagIds && input.tagIds.length > 0) {
+    await linkTagsToChangelog(entry.id, input.tagIds)
   }
 
   // Dispatch event or schedule delayed job based on publish state
@@ -225,6 +231,11 @@ export async function updateChangelog(
     if (input.linkedPostIds.length > 0) {
       await linkPostsToChangelog(id, input.linkedPostIds)
     }
+  }
+
+  // Update tags if provided (full replacement, mirrors linked posts)
+  if (input.tagIds !== undefined) {
+    await replaceChangelogTags(id, input.tagIds)
   }
 
   // Handle event dispatch / scheduling when publish state changes
@@ -361,6 +372,8 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     })
   )
 
+  const entryTags = await getChangelogTags(id)
+
   return {
     id: entry.id,
     title: entry.title,
@@ -373,9 +386,14 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     updatedAt: entry.updatedAt,
     author,
     linkedPosts,
+    tags: entryTags,
     status: computeStatus(entry.publishedAt),
   }
 }
+
+// Tag helpers (link/fetch/filter) live in ./changelog.tags. Re-exported so the
+// admin query and public read modules keep importing from a single surface.
+export { getChangelogTagsForEntries } from './changelog.tags'
 
 // ============================================================================
 // Publish notification

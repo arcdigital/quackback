@@ -18,6 +18,12 @@ interface LinkedPost {
   } | null
 }
 
+interface EntryTag {
+  id: string
+  name: string
+  color: string
+}
+
 interface ChangelogEntryCardProps {
   id: ChangelogId
   title: string
@@ -25,6 +31,7 @@ interface ChangelogEntryCardProps {
   contentJson: TiptapContent | null
   publishedAt: string
   linkedPosts: LinkedPost[]
+  tags?: EntryTag[]
   className?: string
 }
 
@@ -43,6 +50,7 @@ export function ChangelogEntryCard({
   contentJson,
   publishedAt,
   linkedPosts,
+  tags = [],
   className,
 }: ChangelogEntryCardProps) {
   return (
@@ -70,6 +78,25 @@ export function ChangelogEntryCard({
           <h2 className="text-2xl font-bold group-hover:text-primary transition-colors">{title}</h2>
           <LinkIcon className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         </Link>
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-xs font-medium text-muted-foreground"
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: tag.color }}
+                  aria-hidden="true"
+                />
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Rich content body */}
         <div className="mt-4">

@@ -3,7 +3,7 @@
  */
 
 import type { TiptapContent } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type { ChangelogId, PrincipalId, PostId, TagId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
 export type { PublishState } from '@/lib/shared/schemas/changelog'
@@ -21,6 +21,8 @@ export interface CreateChangelogInput {
   contentJson?: TiptapContent | null
   /** IDs of posts to link to this changelog entry */
   linkedPostIds?: PostId[]
+  /** IDs of tags to attach to this changelog entry */
+  tagIds?: TagId[]
   /** Publish state */
   publishState: PublishState
   displayDate?: Date | null
@@ -35,6 +37,8 @@ export interface UpdateChangelogInput {
   contentJson?: TiptapContent | null
   /** IDs of posts to link (replaces existing links) */
   linkedPostIds?: PostId[]
+  /** IDs of tags to attach (replaces existing tags) */
+  tagIds?: TagId[]
   /** Publish state (if changing) */
   publishState?: PublishState
   displayDate?: Date | null
@@ -46,6 +50,8 @@ export interface UpdateChangelogInput {
 export interface ListChangelogParams {
   /** Filter by status */
   status?: 'draft' | 'scheduled' | 'published' | 'all'
+  /** Filter to entries carrying at least one of these tags */
+  tagIds?: TagId[]
   /** Cursor-based pagination */
   cursor?: string
   /** Number of items to return */
@@ -73,6 +79,8 @@ export interface ChangelogEntryWithDetails {
   author: ChangelogAuthor | null
   /** Linked posts */
   linkedPosts: ChangelogLinkedPost[]
+  /** Attached tags */
+  tags: ChangelogTag[]
   /** Computed status based on publishedAt */
   status: 'draft' | 'scheduled' | 'published'
 }
@@ -84,6 +92,15 @@ export interface ChangelogAuthor {
   id: PrincipalId
   name: string
   avatarUrl: string | null
+}
+
+/**
+ * Tag attached to a changelog entry (shared with the global tag pool).
+ */
+export interface ChangelogTag {
+  id: TagId
+  name: string
+  color: string
 }
 
 /**
@@ -118,6 +135,8 @@ export interface PublicChangelogEntry {
   contentJson: TiptapContent | null
   publishedAt: Date
   linkedPosts: PublicChangelogLinkedPost[]
+  /** Attached tags (surfaced publicly for filtering/display) */
+  tags: ChangelogTag[]
 }
 
 /**

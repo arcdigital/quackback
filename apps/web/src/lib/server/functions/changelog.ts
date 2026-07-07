@@ -5,7 +5,7 @@
  */
 
 import { createServerFn } from '@tanstack/react-start'
-import type { BoardId, ChangelogId, PostId } from '@quackback/ids'
+import type { BoardId, ChangelogId, PostId, TagId } from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -60,6 +60,7 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
           content: data.content,
           contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : null,
           linkedPostIds: (data.linkedPostIds ?? []) as PostId[],
+          tagIds: (data.tagIds ?? []) as TagId[],
           publishState: data.publishState as PublishState,
           ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
         },
@@ -97,6 +98,7 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
         content: data.content,
         contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined,
         linkedPostIds: data.linkedPostIds as PostId[] | undefined,
+        tagIds: data.tagIds as TagId[] | undefined,
         publishState: data.publishState as PublishState | undefined,
         ...(data.displayDate !== undefined && { displayDate: data.displayDate }),
       })
@@ -171,6 +173,7 @@ export const listChangelogsFn = createServerFn({ method: 'GET' })
 
       const result = await listChangelogs({
         status: data.status,
+        tagIds: data.tagIds as TagId[] | undefined,
         cursor: data.cursor,
         limit: data.limit,
       })
@@ -246,6 +249,7 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
       const result = await listPublicChangelogs({
         cursor: data.cursor,
         limit: data.limit,
+        tagIds: data.tagIds as TagId[] | undefined,
       })
 
       return {

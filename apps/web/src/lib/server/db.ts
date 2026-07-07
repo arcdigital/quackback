@@ -180,6 +180,8 @@ export {
   changelogEntriesRelations,
   changelogEntryPosts,
   changelogEntryPostsRelations,
+  changelogEntryTags,
+  changelogEntryTagsRelations,
   // Schema tables - live chat
   conversations,
   conversationsRelations,

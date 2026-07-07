@@ -24,6 +24,7 @@ export const createChangelogSchema = z.object({
   content: z.string(),
   contentJson: tiptapContentSchema.nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
   publishState: publishStateSchema,
   displayDate: z.coerce.date().nullable().optional(),
 })
@@ -37,6 +38,7 @@ export const updateChangelogSchema = z.object({
   content: z.string().optional(),
   contentJson: tiptapContentSchema.nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
   publishState: publishStateSchema.optional(),
   displayDate: z.coerce.date().nullable().optional(),
 })
@@ -46,6 +48,7 @@ export const updateChangelogSchema = z.object({
  */
 export const listChangelogsSchema = z.object({
   status: z.enum(['draft', 'scheduled', 'published', 'all']).optional(),
+  tagIds: z.array(z.string()).optional(),
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
 })
@@ -70,6 +73,7 @@ export const deleteChangelogSchema = z.object({
 export const listPublicChangelogsSchema = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
+  tagIds: z.array(z.string()).optional(),
 })
 
 // Export types inferred from schemas

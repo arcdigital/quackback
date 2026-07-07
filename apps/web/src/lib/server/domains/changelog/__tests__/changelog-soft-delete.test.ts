@@ -44,6 +44,7 @@ vi.mock('@/lib/server/db', () => ({
   },
   changelogEntries: changelogEntriesTable,
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
+  changelogEntryTags: { changelogEntryId: 'changelog_entry_id', tagId: 'tag_id' },
   posts: {
     id: 'posts.id',
     title: 'posts.title',
@@ -60,9 +61,11 @@ vi.mock('@/lib/server/db', () => ({
     deletedAt: 'boards.deletedAt',
   },
   postStatuses: { id: 'id' },
+  tags: { id: 'tags.id', name: 'tags.name', color: 'tags.color', deletedAt: 'tags.deleted_at' },
   eq: vi.fn((col, val) => ({ kind: 'eq', col, val })),
   and: vi.fn((...args: unknown[]) => ({ kind: 'and', args })),
   or: vi.fn((...args: unknown[]) => ({ kind: 'or', args })),
+  asc: vi.fn((col) => ({ kind: 'asc', col })),
   isNull: vi.fn((col) => ({ kind: 'isNull', col })),
   isNotNull: vi.fn((col) => ({ kind: 'isNotNull', col })),
   lt: vi.fn((col, val) => ({ kind: 'lt', col, val })),
@@ -84,7 +87,11 @@ function selectChainResolving(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
   chain.from = () => chain
   chain.innerJoin = () => chain
-  chain.where = () => Promise.resolve(rows)
+  // Both terminal at `.where()` (linked posts) and `.where().orderBy()` (tags):
+  // the chain is thenable, so awaiting at either point resolves to `rows`.
+  chain.where = () => chain
+  chain.orderBy = () => chain
+  chain.then = (resolve: (v: unknown[]) => unknown) => resolve(rows)
   return chain
 }
 

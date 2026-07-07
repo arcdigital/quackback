@@ -46,11 +46,19 @@ vi.mock('@/lib/server/db', () => ({
         return { where: () => p }
       },
     }),
-    select: () => ({
-      from: () => ({
-        where: () => ({ orderBy: () => ({ limit: () => Promise.resolve(mockDueRows) }) }),
-      }),
-    }),
+    // Two select shapes share this mock: the reconciler
+    // (`from().where().orderBy().limit()` → mockDueRows) and the tag fetch in
+    // getChangelogById (`from().innerJoin().where().orderBy()`, awaited → []).
+    // One chain that is both chainable and thenable satisfies both.
+    select: () => {
+      const chain: Record<string, unknown> = {}
+      for (const m of ['from', 'innerJoin', 'leftJoin', 'where', 'orderBy']) {
+        chain[m] = () => chain
+      }
+      chain.limit = () => Promise.resolve(mockDueRows)
+      chain.then = (resolve: (v: unknown[]) => unknown) => resolve([])
+      return chain
+    },
     delete: () => ({ where: vi.fn().mockResolvedValue(undefined) }),
   },
   changelogEntries: {
@@ -61,9 +69,11 @@ vi.mock('@/lib/server/db', () => ({
     principalId: 'principal_id',
   },
   changelogEntryPosts: { changelogEntryId: 'changelog_entry_id', postId: 'post_id' },
+  changelogEntryTags: { changelogEntryId: 'changelog_entry_id', tagId: 'tag_id' },
   posts: { id: 'posts.id' },
   principal: { id: 'principal.id' },
   postStatuses: { id: 'postStatuses.id' },
+  tags: { id: 'tags.id', name: 'tags.name', color: 'tags.color', deletedAt: 'tags.deleted_at' },
   eq: vi.fn(),
   and: vi.fn(),
   asc: vi.fn(),

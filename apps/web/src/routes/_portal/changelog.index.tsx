@@ -1,11 +1,21 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
 import { useIntl } from 'react-intl'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { RssIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ChangelogListPublic } from '@/components/portal/changelog'
+import { portalQueries } from '@/lib/client/queries/portal'
+import { cn } from '@/lib/shared/utils'
+
+const searchSchema = z.object({
+  tags: z.array(z.string()).optional(),
+})
 
 export const Route = createFileRoute('/_portal/changelog/')({
+  validateSearch: searchSchema,
   loader: async ({ context }) => {
     return {
       workspaceName: context.settings?.name ?? 'Quackback',
@@ -36,6 +46,23 @@ export const Route = createFileRoute('/_portal/changelog/')({
 
 function ChangelogPage() {
   const intl = useIntl()
+  const navigate = useNavigate({ from: Route.fullPath })
+  const { tags: selectedTagIds = [] } = Route.useSearch()
+
+  // Available tags for the filter. Only tags actually attached to a public
+  // entry are worth showing, but the full public tag list is cheap and matches
+  // the board-filter UX; the query itself is what scopes the entries.
+  const { data: allTags = [] } = useQuery(portalQueries.tags())
+
+  const toggleTag = (tagId: string) => {
+    const next = selectedTagIds.includes(tagId)
+      ? selectedTagIds.filter((id) => id !== tagId)
+      : [...selectedTagIds, tagId]
+    void navigate({
+      search: (prev) => ({ ...prev, tags: next.length > 0 ? next : undefined }),
+      replace: true,
+    })
+  }
 
   return (
     <div className="mx-auto max-w-6xl w-full px-4 sm:px-6 py-8">
@@ -60,11 +87,41 @@ function ChangelogPage() {
         className="mb-8"
       />
 
+      {/* Tag filter — toggles URL ?tags= state and scopes the list query */}
+      {allTags.length > 0 && (
+        <div className="mb-8 flex flex-wrap gap-2">
+          {allTags.map((tag) => {
+            const isSelected = selectedTagIds.includes(tag.id)
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => toggleTag(tag.id)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors',
+                  isSelected
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:text-foreground hover:border-border'
+                )}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: tag.color }}
+                  aria-hidden="true"
+                />
+                {tag.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div
         className="animate-in fade-in duration-300 fill-mode-backwards"
         style={{ animationDelay: '100ms' }}
       >
-        <ChangelogListPublic />
+        <ChangelogListPublic tagIds={selectedTagIds.length > 0 ? selectedTagIds : undefined} />
       </div>
     </div>
   )

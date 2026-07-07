@@ -12,7 +12,7 @@ import { listChangelogs } from '@/lib/server/domains/changelog/changelog.query'
 import { publishedAtToPublishState } from '@/lib/shared/schemas/changelog'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { db, principal, eq } from '@/lib/server/db'
-import type { PostId } from '@quackback/ids'
+import type { PostId, TagId } from '@quackback/ids'
 
 // Input validation schema
 const createChangelogSchema = z.object({
@@ -20,6 +20,7 @@ const createChangelogSchema = z.object({
   content: z.string().min(1, 'Content is required'),
   publishedAt: z.string().datetime().optional(),
   linkedPostIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
 })
 
 export const Route = createFileRoute('/api/v1/changelog/')({
@@ -39,6 +40,13 @@ export const Route = createFileRoute('/api/v1/changelog/')({
           const cursor = url.searchParams.get('cursor') ?? undefined
           const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100)
 
+          // Tag filter: accept repeated ?tag=<id> and/or comma-separated ?tag=a,b
+          const tagIds = url.searchParams
+            .getAll('tag')
+            .flatMap((v) => v.split(','))
+            .map((v) => v.trim())
+            .filter(Boolean) as TagId[]
+
           // Map published filter to service status param
           let status: 'draft' | 'published' | 'all' = 'all'
           if (published === 'true') {
@@ -47,7 +55,12 @@ export const Route = createFileRoute('/api/v1/changelog/')({
             status = 'draft'
           }
 
-          const result = await listChangelogs({ status, cursor, limit })
+          const result = await listChangelogs({
+            status,
+            cursor,
+            limit,
+            ...(tagIds.length > 0 && { tagIds }),
+          })
 
           return successResponse(
             result.items.map((entry) => ({
@@ -58,6 +71,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               displayDate: entry.displayDate?.toISOString() || null,
               createdAt: entry.createdAt.toISOString(),
               updatedAt: entry.updatedAt.toISOString(),
+              tags: entry.tags,
             })),
             {
               pagination: {
@@ -104,6 +118,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
               content: parsed.data.content,
               publishState,
               linkedPostIds: parsed.data.linkedPostIds as PostId[] | undefined,
+              tagIds: parsed.data.tagIds as TagId[] | undefined,
             },
             {
               principalId: authResult.principalId,
@@ -119,6 +134,7 @@ export const Route = createFileRoute('/api/v1/changelog/')({
             displayDate: entry.displayDate?.toISOString() || null,
             createdAt: entry.createdAt.toISOString(),
             updatedAt: entry.updatedAt.toISOString(),
+            tags: entry.tags,
           })
         } catch (error) {
           return handleDomainError(error)
