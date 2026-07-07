@@ -17,6 +17,8 @@ const SLACK_SCOPES = [
   'chat:write',
   'team:read',
   'commands',
+  'users:read',
+  'users:read.email',
 ].join(',')
 
 /**
