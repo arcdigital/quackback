@@ -97,7 +97,7 @@ export function RoadmapBoard({
       )}
 
       <PublicRoadmapToolbar
-        currentSort={filters.sort ?? 'votes'}
+        currentSort={filters.sort ?? 'newest'}
         onSortChange={(sort) => setFilters({ sort })}
         currentSearch={filters.search}
         onSearchChange={(search) => setFilters({ search })}

@@ -64,14 +64,16 @@ function buildRoadmapFilterConditions(
 
   let orderBy
   switch (options.sort) {
-    case 'newest':
-      orderBy = desc(posts.createdAt)
+    case 'votes':
+      orderBy = desc(posts.voteCount)
       break
     case 'oldest':
       orderBy = asc(posts.createdAt)
       break
+    // 'newest' and the unset default both sort by most-recently-created.
+    case 'newest':
     default:
-      orderBy = desc(posts.voteCount)
+      orderBy = desc(posts.createdAt)
       break
   }
 

@@ -361,7 +361,7 @@ export function RoadmapFiltersBar({
     setSearchOpen(false)
   }
 
-  const currentSort = filters.sort ?? 'votes'
+  const currentSort = filters.sort ?? 'newest'
 
   return (
     <div className="flex flex-col gap-1.5">
