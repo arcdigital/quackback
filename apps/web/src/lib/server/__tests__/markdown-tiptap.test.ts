@@ -4,6 +4,7 @@ import {
   tiptapJsonToMarkdown,
   contentJsonToMarkdown,
   commentMarkdownToTiptapJson,
+  extractImagesFromContentJson,
 } from '../markdown-tiptap'
 
 describe('markdownToTiptapJson', () => {
@@ -359,4 +360,55 @@ describe('commentMarkdownToTiptapJson', () => {
     const json = JSON.stringify(result)
     expect(json).toContain('😀')
   })
+})
+
+describe('extractImagesFromContentJson', () => {
+  test('collects image and resizableImage srcs in document order', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'resizableImage', attrs: { src: 'https://x/a.png', alt: 'A' } },
+        {
+          type: 'paragraph',
+          content: [{ type: 'image', attrs: { src: 'https://x/b.png', alt: 'B' } }],
+        },
+      ],
+    }
+    expect(extractImagesFromContentJson(doc)).toEqual([
+      { src: 'https://x/a.png', alt: 'A' },
+      { src: 'https://x/b.png', alt: 'B' },
+    ])
+  })
+
+  test('finds images even when the doc has a non-serializable node (e.g. youtube)', () => {
+    // This is the case that dropped images from the markdown body: a
+    // non-serializable node forces contentJsonToMarkdown to fall back to the
+    // image-free client markdown. contentJson still carries the images.
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'youtube', attrs: { src: 'https://youtube.com/watch?v=x' } },
+        { type: 'resizableImage', attrs: { src: 'https://x/a.png', alt: 'A' } },
+      ],
+    }
+    expect(extractImagesFromContentJson(doc)).toEqual([{ src: 'https://x/a.png', alt: 'A' }])
+  })
+
+  test('defaults alt to empty string and skips nodes without a src', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { src: 'https://x/a.png' } },
+        { type: 'image', attrs: {} },
+      ],
+    }
+    expect(extractImagesFromContentJson(doc)).toEqual([{ src: 'https://x/a.png', alt: '' }])
+  })
+
+  test.each([null, undefined, { not: 'a doc' }, { type: 'doc', content: 'oops' }])(
+    'returns [] and never throws for %s',
+    (value) => {
+      expect(extractImagesFromContentJson(value as never)).toEqual([])
+    }
+  )
 })

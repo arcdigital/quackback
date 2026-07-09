@@ -7,7 +7,7 @@ import { WebClient } from '@slack/web-api'
 import type { HookHandler, HookResult } from '../../events/hook-types'
 import type { EventData } from '../../events/types'
 import { isRetryableError } from '../../events/hook-utils'
-import { buildSlackMessage } from './message'
+import { buildSlackMessage, storageKeyFromUrl } from './message'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'slack' })
@@ -52,6 +52,45 @@ function isAuthError(error: unknown): boolean {
 }
 
 /**
+ * Rewrite image block URLs to directly-fetchable presigned S3 URLs.
+ *
+ * Slack downloads `image_url`s server-side from the public internet, so a
+ * stored `.../api/storage/<key>` URL fails when the portal is internal-only.
+ * Presigning points Slack straight at S3 (publicly reachable) with a
+ * time-limited signature — Slack copies the image immediately, so the default
+ * 48h expiry is ample. Blocks whose URL isn't a storage-route URL (external/CDN
+ * images) or whose key can't be presigned are left as-is.
+ */
+async function resolveImageBlockUrls(
+  blocks: unknown[] | undefined
+): Promise<unknown[] | undefined> {
+  if (!Array.isArray(blocks)) return blocks
+  const hasImages = blocks.some(
+    (b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image'
+  )
+  if (!hasImages) return blocks
+
+  const { isS3Configured, generatePresignedGetUrl } = await import('@/lib/server/storage/s3')
+  if (!isS3Configured()) return blocks
+
+  return Promise.all(
+    blocks.map(async (b) => {
+      if (typeof b !== 'object' || b === null) return b
+      const block = b as { type?: string; image_url?: string }
+      if (block.type !== 'image' || typeof block.image_url !== 'string') return b
+      const key = storageKeyFromUrl(block.image_url)
+      if (!key) return b // external/CDN URL — already directly fetchable
+      try {
+        return { ...block, image_url: await generatePresignedGetUrl(key) }
+      } catch (error) {
+        log.warn({ err: error, key }, 'failed to presign changelog image, leaving url as-is')
+        return b
+      }
+    })
+  )
+}
+
+/**
  * Post a message to a channel, auto-joining public channels if needed.
  */
 async function postMessage(
@@ -92,6 +131,34 @@ async function postMessage(
       })
     }
 
+    // `invalid_blocks` is usually Slack failing to download an image block
+    // server-side (private/unreachable portal, expired presign, etc). One bad
+    // image would otherwise drop the whole announcement, so retry once without
+    // any image blocks — the text + formatting still gets delivered.
+    const hasImageBlock =
+      Array.isArray(message.blocks) &&
+      message.blocks.some(
+        (b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image'
+      )
+    if (errorCode === 'invalid_blocks' && hasImageBlock) {
+      const fallback = {
+        ...message,
+        blocks: message.blocks!.filter(
+          (b) => !(typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image')
+        ),
+      }
+      log.warn(
+        { channel_id: channelId },
+        'invalid_blocks with images present, retrying without image blocks'
+      )
+      return await client.chat.postMessage({
+        channel: channelId,
+        unfurl_links: false,
+        unfurl_media: false,
+        ...fallback,
+      })
+    }
+
     throw error
   }
 }
@@ -105,6 +172,9 @@ export const slackHook: HookHandler = {
 
     const client = new WebClient(accessToken)
     const message = buildSlackMessage(event, rootUrl)
+    // Point Slack's server-side image fetch at presigned S3 URLs so images
+    // render even when the portal itself is internal-only.
+    message.blocks = await resolveImageBlockUrls(message.blocks)
 
     try {
       const result = await postMessage(client, channelId, message)

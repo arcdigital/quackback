@@ -26,7 +26,12 @@ import {
 import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
 import { linkTagsToChangelog, replaceChangelogTags, getChangelogTags } from './changelog.tags'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
-import { markdownToTiptapJson, contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
+import { stripMentionDirectives } from '@/lib/shared/utils/string'
+import {
+  markdownToTiptapJson,
+  contentJsonToMarkdown,
+  extractImagesFromContentJson,
+} from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
 import {
   buildEventActor,
@@ -127,7 +132,7 @@ export async function createChangelog(
   }
 
   // Dispatch event or schedule delayed job based on publish state
-  const actor = buildEventActor({ principalId: author.principalId })
+  const actor = buildEventActor({ principalId: author.principalId, name: author.name })
   if (input.publishState.type === 'published') {
     notifyChangelogPublished(entry.id, actor).catch((err) =>
       log.error({ err }, 'failed to dispatch changelog published event')
@@ -206,11 +211,15 @@ export async function updateChangelog(
   }
 
   if (input.displayDate !== undefined) {
-    validateDisplayDate(existing.publishedAt, input.displayDate)
+    // Validate against the effective publishedAt after this update — when a
+    // draft is published in the same request, the incoming publishState carries
+    // the new publishedAt, so validating against existing.publishedAt (null for
+    // a draft) would wrongly reject a valid display date.
     const publishedAtRef =
       input.publishState !== undefined
         ? getPublishedAtFromState(input.publishState)
         : existing.publishedAt
+    validateDisplayDate(publishedAtRef, input.displayDate)
     updateData.displayDate = normalizeDisplayDate(input.displayDate, publishedAtRef)
   }
 
@@ -241,9 +250,7 @@ export async function updateChangelog(
   // Handle event dispatch / scheduling when publish state changes
   if (input.publishState !== undefined) {
     const jobId = `changelog-publish--${id}`
-    const actor = existing.principalId
-      ? buildEventActor({ principalId: existing.principalId })
-      : { type: 'service' as const, displayName: 'system' }
+    const actor = await resolveChangelogActor(existing.principalId)
 
     if (input.publishState.type === 'published') {
       // Cancel any pending scheduled job, then announce. The helper's atomic
@@ -426,6 +433,28 @@ function liveUnnotifiedConditions(now: Date) {
  *
  * Returns true when this call sent the announcement, false otherwise.
  */
+/**
+ * Resolve the announcement actor for a changelog from its author principal.
+ *
+ * The publish paths only have a `principalId` on hand; passing that alone to
+ * `buildEventActor` yields a nameless service actor, which downstream renders
+ * as "System" (e.g. the Slack "published by" line). Load the principal's
+ * user/display fields so the announcement credits the actual author.
+ */
+export async function resolveChangelogActor(principalId: PrincipalId | null): Promise<EventActor> {
+  if (!principalId) return { type: 'service', displayName: 'scheduler' }
+  const p = await db.query.principal.findFirst({
+    where: eq(principal.id, principalId),
+    columns: { userId: true, displayName: true, contactEmail: true },
+  })
+  return buildEventActor({
+    principalId,
+    userId: p?.userId ?? undefined,
+    displayName: p?.displayName ?? undefined,
+    email: p?.contactEmail ?? undefined,
+  })
+}
+
 export async function notifyChangelogPublished(
   id: ChangelogId,
   actor: EventActor
@@ -440,10 +469,13 @@ export async function notifyChangelogPublished(
   if (!claimed) return false
 
   try {
-    const linkedPosts = await db.query.changelogEntryPosts.findMany({
-      where: eq(changelogEntryPosts.changelogEntryId, id),
-      columns: { postId: true },
-    })
+    const [linkedPosts, tags] = await Promise.all([
+      db.query.changelogEntryPosts.findMany({
+        where: eq(changelogEntryPosts.changelogEntryId, id),
+        columns: { postId: true },
+      }),
+      getChangelogTags(id),
+    ])
     // rethrow so an enqueue failure reaches the catch below; dispatch is
     // otherwise best-effort and would swallow it.
     await dispatchChangelogPublished(
@@ -451,8 +483,21 @@ export async function notifyChangelogPublished(
       {
         id: claimed.id,
         title: claimed.title,
-        contentPreview: claimed.content.slice(0, 200),
-        publishedAt: claimed.publishedAt!,
+        // Resolve mention directives to `@label` before slicing so no channel
+        // renders the raw `[@ id="..." label="..."]` and a directive can't be
+        // cut mid-token by the length cap.
+        contentPreview: stripMentionDirectives(claimed.content).slice(0, 200),
+        // Full body for channels that render the whole entry (e.g. Slack), also
+        // mention-resolved so the raw directive never surfaces.
+        content: stripMentionDirectives(claimed.content),
+        tags: tags.map((t) => t.name),
+        // Images from the canonical contentJson — the markdown body drops them
+        // for docs with non-serializable nodes, so extracting here is reliable.
+        images: extractImagesFromContentJson(claimed.contentJson),
+        // Announce the date the reader sees on the portal: the author's optional
+        // display-date override, falling back to the actual publish timestamp.
+        // Mirrors the public query's `coalesce(displayDate, publishedAt)`.
+        publishedAt: claimed.displayDate ?? claimed.publishedAt!,
         linkedPostCount: linkedPosts.length,
       },
       { rethrow: true }
@@ -489,9 +534,7 @@ export async function reconcileChangelogNotifications(): Promise<number> {
 
   let notified = 0
   for (const entry of due) {
-    const actor = entry.principalId
-      ? buildEventActor({ principalId: entry.principalId })
-      : { type: 'service' as const, displayName: 'scheduler' }
+    const actor = await resolveChangelogActor(entry.principalId)
     if (await notifyChangelogPublished(entry.id, actor)) notified++
   }
   return notified

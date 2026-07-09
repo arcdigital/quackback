@@ -51,6 +51,22 @@ export function formatBadgeCount(n: number): string {
 }
 
 /**
+ * Replace TipTap mention directives with their human label.
+ *
+ * The editor serializes a mention to markdown as
+ * `[@ id="principal_..." label="John Smith"]`. Stored verbatim in the `content`
+ * column, that directive leaks into every notification preview (Slack, email,
+ * in-app). Collapse it to `@John Smith` (or `@mention` when no label was
+ * captured) so previews read naturally.
+ */
+export function stripMentionDirectives(text: string): string {
+  return text.replace(/\[@\s+id="[^"]*"[^\]]*\]/g, (directive) => {
+    const label = /label="([^"]*)"/.exec(directive)?.[1]
+    return label ? `@${label}` : '@mention'
+  })
+}
+
+/**
  * Strip markdown formatting and truncate to a plain text preview.
  * Removes headings, bold, italic, links, images, lists, and collapses whitespace.
  */

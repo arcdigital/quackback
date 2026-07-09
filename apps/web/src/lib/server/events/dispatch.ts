@@ -274,6 +274,13 @@ export interface ChangelogPublishedInput {
   id: ChangelogId
   title: string
   contentPreview: string
+  /** Full markdown body (mentions already resolved), for consumers that render
+   *  the whole entry rather than a short preview. */
+  content?: string
+  /** Tag names attached to the entry, for channels that surface them. */
+  tags?: string[]
+  /** Images (rehosted src + alt) from the entry's canonical contentJson. */
+  images?: Array<{ src: string; alt: string }>
   publishedAt: Date
   linkedPostCount: number
 }
@@ -292,6 +299,9 @@ export async function dispatchChangelogPublished(
           id: changelog.id,
           title: changelog.title,
           contentPreview: changelog.contentPreview,
+          ...(changelog.content !== undefined && { content: changelog.content }),
+          ...(changelog.tags !== undefined && { tags: changelog.tags }),
+          ...(changelog.images !== undefined && { images: changelog.images }),
           publishedAt: changelog.publishedAt.toISOString(),
           linkedPostCount: changelog.linkedPostCount,
         },

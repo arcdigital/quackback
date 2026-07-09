@@ -154,6 +154,32 @@ function hasImageNode(node: JSONContent): boolean {
 }
 
 /**
+ * Collect every image (`image`/`resizableImage`) src+alt from a TipTap tree, in
+ * document order. This is the reliable image source for notifications: the
+ * `content` markdown column only carries `![](…)` when the whole doc was
+ * re-serializable (see {@link contentJsonToMarkdown}), so a doc with any
+ * non-serializable node (embeds, emoji, …) drops its images from markdown while
+ * `contentJson` keeps them. Total by the same contract as {@link hasImageNode}.
+ */
+export function extractImagesFromContentJson(
+  node: TiptapContent | JSONContent | null | undefined
+): Array<{ src: string; alt: string }> {
+  const out: Array<{ src: string; alt: string }> = []
+  const walk = (n: JSONContent | null | undefined): void => {
+    if (!n || typeof n !== 'object') return
+    if (typeof n.type === 'string' && IMAGE_NODE_TYPES.has(n.type)) {
+      const src = n.attrs?.src
+      if (typeof src === 'string' && src.length > 0) {
+        out.push({ src, alt: typeof n.attrs?.alt === 'string' ? n.attrs.alt : '' })
+      }
+    }
+    if (Array.isArray(n.content)) n.content.forEach(walk)
+  }
+  walk(node as JSONContent)
+  return out
+}
+
+/**
  * True only when every node in the tree can be re-serialized without loss. A
  * single unknown node type makes this false so the caller keeps stored markdown.
  * Total by the same contract as {@link hasImageNode}.

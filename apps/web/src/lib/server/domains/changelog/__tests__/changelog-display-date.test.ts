@@ -63,8 +63,8 @@ vi.mock('@/lib/server/events/dispatch', () => ({
   dispatchChangelogPublished: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/server/events/scheduler', () => ({
-  scheduleDispatch: vi.fn(),
-  cancelScheduledDispatch: vi.fn(),
+  scheduleDispatch: vi.fn().mockResolvedValue(undefined),
+  cancelScheduledDispatch: vi.fn().mockResolvedValue(undefined),
 }))
 
 const ENTRY_ID = 'changelog_01test' as ChangelogId
@@ -118,6 +118,27 @@ describe('displayDate', () => {
       updateChangelog(ENTRY_ID, { displayDate: new Date(Date.now() + 60_000) })
     ).rejects.toBeInstanceOf(ValidationError)
     expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
+  it('accepts displayDate when publishing a draft in the same request', async () => {
+    const { updateChangelog } = await import('../changelog.service')
+    const pastDisplay = new Date('2024-01-15T09:00:00Z')
+
+    // Existing entry is a draft (publishedAt: null). Publishing it while also
+    // setting a display date must validate against the incoming publishState's
+    // publishedAt, not the stale draft value.
+    mockEntryFindFirst
+      .mockResolvedValueOnce(baseEntry({ publishedAt: null }))
+      .mockResolvedValueOnce(baseEntry({ displayDate: pastDisplay }))
+
+    await updateChangelog(ENTRY_ID, {
+      displayDate: pastDisplay,
+      publishState: { type: 'published', publishAt: PUBLISHED_AT },
+    })
+
+    expect(mockUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ displayDate: pastDisplay, publishedAt: PUBLISHED_AT })
+    )
   })
 
   it('stores null when displayDate matches publishedAt calendar day', async () => {

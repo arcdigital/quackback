@@ -317,13 +317,14 @@ async function handleDelayedChangelogPublish(hookConfig: Record<string, unknown>
   const principalId = hookConfig.principalId as string | undefined
   if (!changelogId) return
 
-  const { notifyChangelogPublished } =
+  const { notifyChangelogPublished, resolveChangelogActor } =
     await import('@/lib/server/domains/changelog/changelog.service')
-  const { buildEventActor } = await import('./dispatch')
 
-  const actor = principalId
-    ? buildEventActor({ principalId: principalId as import('@quackback/ids').PrincipalId })
-    : { type: 'service' as const, displayName: 'scheduler' }
+  // Resolve the author's name from the principal so scheduled announcements
+  // credit the actual author instead of rendering as "System".
+  const actor = await resolveChangelogActor(
+    (principalId as import('@quackback/ids').PrincipalId | undefined) ?? null
+  )
 
   await notifyChangelogPublished(changelogId as import('@quackback/ids').ChangelogId, actor)
 }

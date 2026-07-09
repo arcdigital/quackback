@@ -153,6 +153,18 @@ export interface ChangelogPublishedPayload {
     id: string
     title: string
     contentPreview: string
+    /** Full markdown body (mentions already resolved). Optional so legacy/queued
+     *  events without it still validate; consumers that want the whole entry
+     *  (e.g. the Slack message) fall back to `contentPreview` when absent. */
+    content?: string
+    /** Tag names attached to the entry, for channels that surface them (Slack).
+     *  Optional so legacy/queued events without it still validate. */
+    tags?: string[]
+    /** Images (rehosted src + alt) from the entry's canonical contentJson, for
+     *  channels that render them (Slack). Sourced from contentJson rather than
+     *  the markdown body, which drops images for non-serializable docs.
+     *  Optional so legacy/queued events without it still validate. */
+    images?: Array<{ src: string; alt: string }>
     publishedAt: string
     linkedPostCount: number
   }
