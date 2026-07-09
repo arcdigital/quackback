@@ -1029,6 +1029,7 @@ export async function handleNewDeviceNotification(
   try {
     const { sendNewSignInEmail } = await import('@quackback/email')
     const { recordAuditEvent } = await import('@/lib/server/audit/log')
+    const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
     const occurredAt = new Date().toISOString()
     await Promise.all([
       sendNewSignInEmail({
@@ -1037,7 +1038,10 @@ export async function handleNewDeviceNotification(
         occurredAt,
         ipAddress: ip,
         userAgent,
-        logoUrl: tenant?.brandingData?.logoUrl ?? undefined,
+        // Email-safe URL streams bytes via the proxy (?email=1); the plain
+        // brandingData.logoUrl 302-redirects to a presigned S3 URL, which
+        // Gmail's image proxy won't follow — the logo silently fails to load.
+        logoUrl: getEmailSafeUrl(tenant?.settings?.logoKey) ?? undefined,
       }),
       recordAuditEvent({
         event: 'auth.signin.new_device',
