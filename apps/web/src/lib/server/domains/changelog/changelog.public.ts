@@ -191,11 +191,17 @@ export async function listPublicChangelogs(params: {
       ? (cursorEntry.displayDate ?? cursorEntry.publishedAt)
       : null
     if (cursorEffective) {
+      // Bind as an ISO string: `effectiveDisplayDate` is a raw `sql<Date>`
+      // expression, not a Drizzle column, so comparisons against it have no
+      // timestamp encoder and would otherwise bind the Date via its default
+      // `.toString()` ("Thu May 28 2026 ... (Coordinated Universal Time)"),
+      // which Postgres can't parse as a timestamp.
+      const cursorEffectiveIso = cursorEffective.toISOString()
       conditions.push(
         or(
-          lt(effectiveDisplayDate, cursorEffective),
+          lt(effectiveDisplayDate, cursorEffectiveIso),
           and(
-            sql`${effectiveDisplayDate} = ${cursorEffective}`,
+            sql`${effectiveDisplayDate} = ${cursorEffectiveIso}`,
             lt(changelogEntries.id, cursor as ChangelogId)
           )
         )!

@@ -174,6 +174,14 @@ describe('listPublicChangelogs', () => {
       .mocked(lt)
       .mock.calls.filter((args) => (args[0] as { kind?: string })?.kind === 'sql')
     expect(ltEffectiveDateCalls.length).toBeGreaterThanOrEqual(1)
+
+    // Regression: the cursor date must be bound as an ISO string, not a raw
+    // Date. `effectiveDisplayDate` is an untyped `sql<Date>` expression, so a
+    // Date would bind via `.toString()` ("... (Coordinated Universal Time)"),
+    // which Postgres can't parse — breaking the "Load more" button.
+    const cursorValue = ltEffectiveDateCalls[0]![1]
+    expect(typeof cursorValue).toBe('string')
+    expect(cursorValue).toBe(new Date('2026-01-01').toISOString())
   })
 })
 
