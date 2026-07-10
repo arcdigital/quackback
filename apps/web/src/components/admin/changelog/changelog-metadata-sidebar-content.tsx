@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import {
   DocumentTextIcon,
@@ -32,11 +32,17 @@ import { cn } from '@/lib/shared/utils'
 import type { PostId, TagId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
+/** A shipped post as returned by searchShippedPostsFn. */
+export type ShippedPost = Awaited<ReturnType<typeof searchShippedPostsFn>>[number]
+
 interface ChangelogMetadataSidebarContentProps {
   publishState: PublishState
   onPublishStateChange: (state: PublishState) => void
   linkedPostIds: PostId[]
   onLinkedPostsChange: (postIds: PostId[]) => void
+  /** Already-linked posts (edit mode). Seeds the selected-post cards so posts
+   *  that aren't in the current search results still render on open. */
+  initialPosts?: ShippedPost[]
   tagIds: TagId[]
   onTagsChange: (tagIds: TagId[]) => void
   authorName?: string | null
@@ -57,6 +63,7 @@ export function ChangelogMetadataSidebarContent({
   onPublishStateChange,
   linkedPostIds,
   onLinkedPostsChange,
+  initialPosts,
   tagIds,
   onTagsChange,
   authorName,
@@ -97,8 +104,41 @@ export function ChangelogMetadataSidebarContent({
     staleTime: 30 * 1000,
   })
 
-  // Get selected post details
-  const selectedPosts = posts.filter((p) => linkedPostIds.includes(p.id))
+  // Cache every post we've seen, keyed by id. Selected-post cards derive from
+  // this — NOT from the current search results — so a post selected under one
+  // query still renders after searching for something else (searchShippedPostsFn
+  // only returns the current query's matches). Seeded from `initialPosts` too so
+  // already-linked posts in edit mode render even when they're not in the
+  // default search results.
+  const [knownPosts, setKnownPosts] = useState<Map<PostId, ShippedPost>>(new Map())
+  const mergeIntoKnown = (incoming: ShippedPost[]) => {
+    if (incoming.length === 0) return
+    setKnownPosts((prev) => {
+      let changed = false
+      const next = new Map(prev)
+      for (const p of incoming) {
+        if (!next.has(p.id)) {
+          next.set(p.id, p)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }
+  useEffect(() => {
+    mergeIntoKnown(posts)
+  }, [posts])
+  useEffect(() => {
+    if (initialPosts) mergeIntoKnown(initialPosts)
+  }, [initialPosts])
+
+  // Selected posts in the order they were linked. A selected id we haven't seen
+  // a full object for yet (not in any search result this session) is skipped
+  // here rather than shown half-rendered.
+  const selectedPosts = useMemo(
+    () => linkedPostIds.map((id) => knownPosts.get(id)).filter((p): p is ShippedPost => p != null),
+    [linkedPostIds, knownPosts]
+  )
 
   const handleStatusChange = (value: string) => {
     const type = value as 'draft' | 'scheduled' | 'published'

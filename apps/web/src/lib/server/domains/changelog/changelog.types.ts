@@ -114,6 +114,11 @@ export interface ChangelogLinkedPost {
     name: string
     color: string
   } | null
+  /** Board slug, author, and creation time — used by the admin edit modal to
+   *  render linked-post cards for posts not present in the current search. */
+  boardSlug: string
+  authorName: string | null
+  createdAt: string
 }
 
 /**

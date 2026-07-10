@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useKeyboardSubmit } from '@/lib/client/hooks/use-keyboard-submit'
 import { ModalFooter } from '@/components/shared/modal-footer'
 import { useUrlModal } from '@/lib/client/hooks/use-url-modal'
@@ -49,6 +49,21 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
   const { data: entry, isLoading } = useQuery({
     ...changelogQueries.detail(entryId),
   })
+
+  // Seed the post picker with the entry's already-linked posts so they render
+  // as cards even when they aren't in the picker's default search results.
+  const initialLinkedPosts = useMemo(
+    () =>
+      (entry?.linkedPosts ?? []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        voteCount: p.voteCount,
+        boardSlug: p.boardSlug,
+        authorName: p.authorName,
+        createdAt: new Date(p.createdAt),
+      })),
+    [entry?.linkedPosts]
+  )
 
   const form = useForm({
     resolver: standardSchemaResolver(updateChangelogSchema),
@@ -177,6 +192,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
             onPublishStateChange={setPublishState}
             linkedPostIds={linkedPostIds}
             onLinkedPostsChange={setLinkedPostIds}
+            initialPosts={initialLinkedPosts}
             tagIds={tagIds}
             onTagsChange={setTagIds}
             authorName={entry?.author?.name}
@@ -211,6 +227,7 @@ function ChangelogModalContent({ entryId, onClose }: ChangelogModalContentProps)
                   onPublishStateChange={setPublishState}
                   linkedPostIds={linkedPostIds}
                   onLinkedPostsChange={setLinkedPostIds}
+                  initialPosts={initialLinkedPosts}
                   tagIds={tagIds}
                   onTagsChange={setTagIds}
                   authorName={entry?.author?.name}
@@ -245,7 +262,12 @@ export function ChangelogModal({ entryId: urlEntryId }: ChangelogModalProps) {
       srTitle="Edit changelog entry"
       hasValidId={!!validatedId}
     >
-      {validatedId && <ChangelogModalContent entryId={validatedId} onClose={close} />}
+      {/* Key by entryId so opening a different entry remounts the content and
+          re-seeds its state (title, linked posts, tags). Without the key the
+          instance is reused and `hasInitialized` keeps the first entry's data. */}
+      {validatedId && (
+        <ChangelogModalContent key={validatedId} entryId={validatedId} onClose={close} />
+      )}
     </UrlModalShell>
   )
 }

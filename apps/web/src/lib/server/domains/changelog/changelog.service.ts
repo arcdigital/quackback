@@ -352,6 +352,11 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
           title: true,
           voteCount: true,
           statusId: true,
+          createdAt: true,
+        },
+        with: {
+          board: { columns: { slug: true } },
+          author: { columns: { displayName: true } },
         },
       },
     },
@@ -375,6 +380,9 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
         title: lp.post.title,
         voteCount: lp.post.voteCount,
         status,
+        boardSlug: lp.post.board?.slug ?? '',
+        authorName: lp.post.author?.displayName ?? null,
+        createdAt: lp.post.createdAt.toISOString(),
       }
     })
   )
