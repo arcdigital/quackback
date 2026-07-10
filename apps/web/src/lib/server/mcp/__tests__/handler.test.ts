@@ -654,6 +654,7 @@ describe('MCP HTTP Handler', () => {
       expect(toolNames).toContain('create_changelog')
       expect(toolNames).toContain('update_changelog')
       expect(toolNames).toContain('delete_changelog')
+      expect(toolNames).toContain('list_tags')
       expect(toolNames).toContain('update_comment')
       expect(toolNames).toContain('delete_comment')
       expect(toolNames).toContain('react_to_comment')
@@ -668,7 +669,7 @@ describe('MCP HTTP Handler', () => {
       expect(toolNames).toContain('suggest_post')
       expect(toolNames).toContain('share_post')
       expect(toolNames).toContain('set_conversation_status')
-      expect(toolNames).toHaveLength(33)
+      expect(toolNames).toHaveLength(34)
     })
 
     it('should handle resources/list request', async () => {
@@ -1455,7 +1456,7 @@ describe('MCP HTTP Handler', () => {
         mcpRequest(
           jsonRpcRequest('tools/call', {
             name: 'create_changelog',
-            arguments: { title: 'v1.0', content: 'New features' },
+            arguments: { title: 'v1.0', content: 'New features', tagIds: ['tag_01a', 'tag_01b'] },
           })
         )
       )
@@ -1467,6 +1468,12 @@ describe('MCP HTTP Handler', () => {
       const text = JSON.parse(body.result.content[0].text)
       expect(text.id).toBe('changelog_new')
       expect(text.status).toBe('draft')
+
+      const { createChangelog } = await import('@/lib/server/domains/changelog/changelog.service')
+      expect(vi.mocked(createChangelog)).toHaveBeenCalledWith(
+        expect.objectContaining({ tagIds: ['tag_01a', 'tag_01b'] }),
+        expect.any(Object)
+      )
     })
 
     // ── update_changelog tool ───────────────────────────────────────────
@@ -1478,7 +1485,12 @@ describe('MCP HTTP Handler', () => {
         mcpRequest(
           jsonRpcRequest('tools/call', {
             name: 'update_changelog',
-            arguments: { changelogId: 'changelog_01test', title: 'Updated Release', publish: true },
+            arguments: {
+              changelogId: 'changelog_01test',
+              title: 'Updated Release',
+              publish: true,
+              tagIds: ['tag_01a', 'tag_01b'],
+            },
           })
         )
       )
@@ -1490,6 +1502,12 @@ describe('MCP HTTP Handler', () => {
       const text = JSON.parse(body.result.content[0].text)
       expect(text.id).toBe('changelog_01test')
       expect(text.status).toBe('published')
+
+      const { updateChangelog } = await import('@/lib/server/domains/changelog/changelog.service')
+      expect(vi.mocked(updateChangelog)).toHaveBeenCalledWith(
+        'changelog_01test',
+        expect.objectContaining({ tagIds: ['tag_01a', 'tag_01b'] })
+      )
     })
 
     // ── delete_changelog tool ───────────────────────────────────────────
@@ -1513,6 +1531,25 @@ describe('MCP HTTP Handler', () => {
       const text = JSON.parse(body.result.content[0].text)
       expect(text.deleted).toBe(true)
       expect(text.changelogId).toBe('changelog_01test')
+    })
+
+    // ── list_tags tool ──────────────────────────────────────────────────
+
+    it('should handle tools/call for list_tags', async () => {
+      const handleMcpRequest = await initializeSession()
+
+      const response = await handleMcpRequest(
+        mcpRequest(jsonRpcRequest('tools/call', { name: 'list_tags', arguments: {} }))
+      )
+
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as {
+        result: { content: Array<{ text: string }> }
+      }
+      const text = JSON.parse(body.result.content[0].text)
+      expect(text.tags).toEqual([
+        { id: 'tag_test', name: 'Bug', color: '#ef4444', description: undefined },
+      ])
     })
 
     it('should handle resources/read for boards', async () => {

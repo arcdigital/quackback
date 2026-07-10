@@ -1,7 +1,7 @@
 /**
  * MCP Tools for Quackback
  *
- * 33 tools calling domain services directly (no HTTP self-loop):
+ * 34 tools calling domain services directly (no HTTP self-loop):
  * - search: Unified search across posts, changelogs, and articles
  * - get_details: Get full details for any entity by TypeID
  * - triage_post: Update post status, tags, and owner
@@ -12,7 +12,7 @@
  * - delete_post: Soft-delete a post
  * - restore_post: Restore a soft-deleted post
  * - create_changelog: Create a changelog entry
- * - update_changelog: Update title, content, publish state, linked posts
+ * - update_changelog: Update title, content, publish state, linked posts, tags
  * - delete_changelog: Soft-delete a changelog entry
  * - update_comment: Edit a comment's content
  * - delete_comment: Hard-delete a comment and its replies
@@ -25,6 +25,7 @@
  * - dismiss_suggestion: Dismiss a suggestion
  * - restore_suggestion: Restore a dismissed suggestion to pending
  * - get_post_activity: Get activity log for a post
+ * - list_tags: List all workspace tags with their TypeIDs
  * - create_article: Create a help center article (draft)
  * - update_article: Update or publish/unpublish an article
  * - delete_article: Soft-delete an article
@@ -435,6 +436,7 @@ const createChangelogSchema = {
     .describe(
       'ISO 8601 datetime to publish at (e.g. "2025-03-15T12:00:00Z"). Overrides publish flag. Past dates backdate the entry, future dates schedule it.'
     ),
+  tagIds: z.array(z.string()).optional().describe('Tag TypeIDs to apply'),
 }
 
 const updateChangelogSchema = {
@@ -465,6 +467,7 @@ const updateChangelogSchema = {
     .array(z.string())
     .optional()
     .describe('Replace linked posts with these post TypeIDs'),
+  tagIds: z.array(z.string()).optional().describe('Replace all tags with these TypeIDs'),
 }
 
 const deleteChangelogSchema = {
@@ -686,6 +689,7 @@ type CreateChangelogArgs = {
   content: string
   publish: boolean
   publishedAt?: string
+  tagIds?: string[]
 }
 
 type UpdateChangelogArgs = {
@@ -696,6 +700,7 @@ type UpdateChangelogArgs = {
   publishedAt?: string
   displayDate?: string | null
   linkedPostIds?: string[]
+  tagIds?: string[]
 }
 
 type DeleteChangelogArgs = { changelogId: string }
@@ -1216,7 +1221,8 @@ Examples:
 Examples:
 - Draft: create_changelog({ title: "v2.1 Release", content: "## New features\\n- Dark mode..." })
 - Published: create_changelog({ title: "v2.1 Release", content: "## New features\\n- Dark mode...", publish: true })
-- Backdated: create_changelog({ title: "v2.1 Release", content: "...", publishedAt: "2025-03-15T12:00:00Z" })${CONTENT_FORMAT_BLOCK}`,
+- Backdated: create_changelog({ title: "v2.1 Release", content: "...", publishedAt: "2025-03-15T12:00:00Z" })
+- With tags: create_changelog({ title: "v2.1 Release", content: "...", tagIds: ["tag_01a...", "tag_01b..."] })${CONTENT_FORMAT_BLOCK}`,
     createChangelogSchema,
     WRITE,
     async (args: CreateChangelogArgs): Promise<CallToolResult> => {
@@ -1233,6 +1239,7 @@ Examples:
             title: args.title,
             content: args.content,
             publishState,
+            tagIds: args.tagIds as TagId[] | undefined,
           },
           { principalId: auth.principalId, name: auth.name }
         )
@@ -1253,14 +1260,15 @@ Examples:
   // update_changelog
   server.tool(
     'update_changelog',
-    `Update title, content, publish state, and/or linked posts on an existing changelog entry.
+    `Update title, content, publish state, linked posts, and/or tags on an existing changelog entry.
 
 Examples:
 - Update title: update_changelog({ changelogId: "changelog_01abc...", title: "v2.0 Release" })
 - Publish: update_changelog({ changelogId: "changelog_01abc...", publish: true })
 - Backdate display: update_changelog({ changelogId: "changelog_01abc...", displayDate: "2025-03-15T12:00:00Z" })
 - Clear display override: update_changelog({ changelogId: "changelog_01abc...", displayDate: null })
-- Link posts: update_changelog({ changelogId: "changelog_01abc...", linkedPostIds: ["post_01a...", "post_01b..."] })${CONTENT_FORMAT_BLOCK}`,
+- Link posts: update_changelog({ changelogId: "changelog_01abc...", linkedPostIds: ["post_01a...", "post_01b..."] })
+- Replace tags: update_changelog({ changelogId: "changelog_01abc...", tagIds: ["tag_01a...", "tag_01b..."] })${CONTENT_FORMAT_BLOCK}`,
     updateChangelogSchema,
     WRITE,
     async (args: UpdateChangelogArgs): Promise<CallToolResult> => {
@@ -1282,6 +1290,7 @@ Examples:
           title: args.title,
           content: args.content,
           linkedPostIds: args.linkedPostIds as PostId[] | undefined,
+          tagIds: args.tagIds as TagId[] | undefined,
           publishState,
           ...(args.displayDate !== undefined && {
             displayDate: args.displayDate === null ? null : new Date(args.displayDate),
@@ -1834,6 +1843,38 @@ Examples:
             actorName: a.actorName,
             metadata: a.metadata,
             createdAt: a.createdAt,
+          })),
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // list_tags
+  server.tool(
+    'list_tags',
+    `List all tags in the workspace. Use the returned TypeIDs with the tagIds parameter on triage_post, create_post, create_changelog, and update_changelog.
+
+Examples:
+- List all tags: list_tags()`,
+    {},
+    READ_ONLY,
+    async (): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'read:feedback')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const { listTags } = await import('@/lib/server/domains/tags/tag.service')
+        const tags = await listTags()
+
+        return jsonResult({
+          tags: tags.map((t) => ({
+            id: t.id,
+            name: t.name,
+            color: t.color,
+            description: t.description,
           })),
         })
       } catch (err) {
