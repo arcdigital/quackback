@@ -3,9 +3,9 @@ import { buildSlackMessage, storageKeyFromUrl } from '../message'
 import type { ChangelogPublishedEvent } from '../../../events/types'
 
 /**
- * Extract the body text from a built changelog Slack message. The message emits
- * a title section first and then one or more body sections (where
- * markdownToMrkdwn runs), so we join every section after the title.
+ * Extract the body text from a built changelog Slack message. The title is now a
+ * `header` block, so every `section` block is body content (where
+ * markdownToMrkdwn runs).
  */
 function changelogBodyText(markdown: string): string {
   const event: ChangelogPublishedEvent = {
@@ -29,12 +29,51 @@ function changelogBodyText(markdown: string): string {
     (b): b is { type: string; text: { text: string } } =>
       typeof b === 'object' && b !== null && (b as { type?: string }).type === 'section'
   )
-  // Drop the title section (index 0); the rest is the converted body.
-  return sections
-    .slice(1)
-    .map((s) => s.text.text)
-    .join('\n')
+  return sections.map((s) => s.text.text).join('\n')
 }
+
+describe('changelog message structure', () => {
+  function build() {
+    const event: ChangelogPublishedEvent = {
+      id: 'evt_1',
+      type: 'changelog.published',
+      timestamp: '2025-06-01T12:00:00Z',
+      actor: { type: 'user', displayName: 'Ada' },
+      data: {
+        changelog: {
+          id: 'changelog_1',
+          title: 'Big Release',
+          contentPreview: 'body',
+          content: 'body',
+          publishedAt: '2025-06-01T12:00:00Z',
+          linkedPostCount: 0,
+        },
+      },
+    }
+    return (buildSlackMessage(event, 'https://portal.example.com').blocks ?? []) as Array<{
+      type: string
+      text?: { type: string; text: string }
+      elements?: Array<{ text: string }>
+    }>
+  }
+
+  it('leads with a divider then a header so posts are visually separated', () => {
+    const blocks = build()
+    expect(blocks[0].type).toBe('divider')
+    expect(blocks[1].type).toBe('header')
+    expect(blocks[1].text?.type).toBe('plain_text')
+    expect(blocks[1].text?.text).toContain('Big Release')
+  })
+
+  it('puts the clickable link and author in the context row', () => {
+    const blocks = build()
+    const context = blocks.find((b) => b.type === 'context')
+    expect(context?.elements?.[0].text).toContain(
+      'https://portal.example.com/changelog/changelog_1'
+    )
+    expect(context?.elements?.[0].text).toContain('Ada')
+  })
+})
 
 describe('markdownToMrkdwn formatting', () => {
   it('converts `~~strike~~` to Slack single-tilde strikethrough', () => {
@@ -54,6 +93,29 @@ describe('markdownToMrkdwn formatting', () => {
     expect(text).toContain('~gone~ and here')
     expect(text).not.toContain('~~')
     expect(text).not.toContain('++')
+  })
+
+  it('renders every heading level as a single bold line', () => {
+    const text = changelogBodyText('# H1\n\n## H2\n\n### H3\n\n#### H4')
+    expect(text).toContain('*H1*')
+    expect(text).toContain('*H2*')
+    expect(text).toContain('*H3*')
+    expect(text).toContain('*H4*')
+    expect(text).not.toContain('#')
+  })
+
+  it('flattens bold nested inside a heading (no broken nested markers)', () => {
+    // `## Heading **x**` must not become `*Heading *x* *` — Slack has no nested
+    // bold and would render it broken.
+    const text = changelogBodyText('## Heading with **bold** inside')
+    expect(text).toContain('*Heading with bold inside*')
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('*Heading with *')
+  })
+
+  it('keeps links and italic inside a heading', () => {
+    const text = changelogBodyText('### See [docs](https://x.co) and *note*')
+    expect(text).toContain('*See <https://x.co|docs> and _note_*')
   })
 })
 

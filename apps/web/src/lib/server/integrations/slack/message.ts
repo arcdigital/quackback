@@ -144,7 +144,13 @@ function markdownToMrkdwn(markdown: string): string {
     // matches a single `*`/`_` — can't re-capture the emitted markers and
     // downgrade bold to italic.
     .replace(/(\*\*|__)(.+?)\1/g, '@@B@@$2@@B@@')
-    .replace(/^#{1,6}\s+(.*)$/gm, '@@B@@$1@@B@@')
+    // Headings render as bold. Strip any bold sentinels already inside the
+    // heading text first: Slack has no nested bold, so `## Heading **x**` would
+    // otherwise emit `*Heading *x* *` and render broken. The whole heading is
+    // bold anyway, so inner bold is redundant.
+    .replace(/^#{1,6}\s+(.*)$/gm, (_m, content: string) => {
+      return `@@B@@${content.replace(/@@B@@/g, '')}@@B@@`
+    })
     // Italic: `*x*`/`_x_` -> `_x_` (Slack italic marker).
     .replace(/(?<![*_])[*_](?![*_\s])(.+?)(?<![*_\s])[*_](?![*_])/g, '_$1_')
     // Restore bold sentinels now that the italic pass is done.
@@ -347,24 +353,22 @@ export function buildSlackMessage(event: EventData, rootUrl: string): SlackMessa
       // so — unlike the title — its output must not be re-escaped.
       const body = markdownToMrkdwn(source)
 
+      // Lead with a divider + header so consecutive changelog posts are clearly
+      // separated and each title stands out (header renders large/bold, unlike a
+      // plain bold section that blends into body text). Header blocks are
+      // plain_text only — no link, 150-char cap — so the clickable link and the
+      // "published by / date" line live in the context row beneath it.
+      const headerText = truncate(`📢 ${changelog.title}`, 150)
+      const metaParts = [`by *${escapeSlackMrkdwn(actor)}*`]
+      if (publishedDate) metaParts.push(publishedDate)
+      metaParts.push(`<${changelogUrl}|View changelog →>`)
+
       const blocks: unknown[] = [
+        { type: 'divider' },
+        { type: 'header', text: { type: 'plain_text', text: headerText, emoji: true } },
         {
           type: 'context',
-          elements: [
-            {
-              type: 'mrkdwn',
-              text: `📢 Changelog published by *${escapeSlackMrkdwn(actor)}*${
-                publishedDate ? ` · ${publishedDate}` : ''
-              }`,
-            },
-          ],
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*<${changelogUrl}|${escapeSlackMrkdwn(changelog.title)}>*`,
-          },
+          elements: [{ type: 'mrkdwn', text: metaParts.join('  ·  ') }],
         },
       ]
 
@@ -373,11 +377,11 @@ export function buildSlackMessage(event: EventData, rootUrl: string): SlackMessa
         blocks.push({ type: 'section', text: { type: 'mrkdwn', text: chunk } })
       }
 
-      // Render images as native Slack image blocks. The stored src points at the
-      // portal's storage route, which may be internal-only; the Slack hook
-      // rewrites each image_url to a directly-fetchable presigned S3 URL before
-      // sending (see resolveImageBlockUrls). Slack caps a message at 50 blocks;
-      // keep well under it.
+      // Emit image blocks carrying the stored storage-route src. The Slack hook
+      // extracts these (splitImageBlocks) and uploads the bytes as native Slack
+      // files rather than sending them as image blocks — the storage URL is
+      // internal-only and Slack fetches image_urls server-side. Cap at 8 (well
+      // under Slack's 50-block limit).
       for (const img of images.slice(0, 8)) {
         blocks.push({
           type: 'image',

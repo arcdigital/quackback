@@ -15,6 +15,10 @@ const SLACK_SCOPES = [
   'channels:history',
   'groups:history',
   'chat:write',
+  // Lets us upload changelog images as native Slack files so they're hosted by
+  // Slack permanently — presigned/public S3 URLs otherwise expire or require a
+  // publicly-reachable bucket.
+  'files:write',
   'team:read',
   'commands',
   'users:read',

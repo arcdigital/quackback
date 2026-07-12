@@ -88,10 +88,29 @@ export function OAuthConnectionActions({
 
         {isConnected && (
           <>
+            {/* Reconnect re-runs OAuth to refresh the token / grant new scopes.
+                It upserts the same integration row, so event mappings and
+                channel config are preserved — unlike Disconnect, which deletes
+                the row and cascades those away. */}
             <Button
               variant="outline"
               size="sm"
-              disabled={disconnecting}
+              disabled={connecting || disconnecting}
+              onClick={handleConnect}
+            >
+              {connecting ? (
+                <>
+                  <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />
+                  Reconnecting...
+                </>
+              ) : (
+                'Reconnect'
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={disconnecting || connecting}
               onClick={() => setDisconnectDialogOpen(true)}
             >
               {disconnecting ? (

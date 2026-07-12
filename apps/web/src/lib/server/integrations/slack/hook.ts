@@ -51,43 +51,76 @@ function isAuthError(error: unknown): boolean {
   return code !== undefined && AUTH_ERRORS.includes(code)
 }
 
+interface ImageBlock {
+  type: 'image'
+  image_url: string
+  alt_text?: string
+}
+
+function isImageBlock(b: unknown): b is ImageBlock {
+  return typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image'
+}
+
 /**
- * Rewrite image block URLs to directly-fetchable presigned S3 URLs.
+ * Split a message's blocks into non-image blocks (kept in the posted message)
+ * and the image blocks (uploaded separately as native Slack files).
  *
- * Slack downloads `image_url`s server-side from the public internet, so a
- * stored `.../api/storage/<key>` URL fails when the portal is internal-only.
- * Presigning points Slack straight at S3 (publicly reachable) with a
- * time-limited signature — Slack copies the image immediately, so the default
- * 48h expiry is ample. Blocks whose URL isn't a storage-route URL (external/CDN
- * images) or whose key can't be presigned are left as-is.
+ * We upload images rather than pass `image_url`s because Slack fetches those
+ * server-side and re-fetches them later — a stored `/api/storage/<key>` URL
+ * fails for an internal-only portal, and presigned S3 URLs expire. Native file
+ * uploads are hosted by Slack permanently and need no public bucket.
  */
-async function resolveImageBlockUrls(
-  blocks: unknown[] | undefined
-): Promise<unknown[] | undefined> {
-  if (!Array.isArray(blocks)) return blocks
-  const hasImages = blocks.some(
-    (b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image'
-  )
-  if (!hasImages) return blocks
+function splitImageBlocks(blocks: unknown[] | undefined): {
+  textBlocks: unknown[] | undefined
+  imageBlocks: ImageBlock[]
+} {
+  if (!Array.isArray(blocks)) return { textBlocks: blocks, imageBlocks: [] }
+  const imageBlocks = blocks.filter(isImageBlock)
+  if (imageBlocks.length === 0) return { textBlocks: blocks, imageBlocks: [] }
+  return { textBlocks: blocks.filter((b) => !isImageBlock(b)), imageBlocks }
+}
 
-  const { isS3Configured, generatePresignedGetUrl } = await import('@/lib/server/storage/s3')
-  if (!isS3Configured()) return blocks
+/**
+ * Upload changelog images to a channel as native Slack files, threaded under
+ * the announcement message. Best-effort: a failed image is logged and skipped
+ * so it never blocks the announcement itself. External/CDN images (not on our
+ * storage route) are skipped — we only have bytes for our own storage keys.
+ */
+async function uploadImages(
+  client: WebClient,
+  channelId: string,
+  threadTs: string | undefined,
+  images: ImageBlock[]
+): Promise<void> {
+  const { isS3Configured, getS3Object } = await import('@/lib/server/storage/s3')
+  if (!isS3Configured()) return
 
-  return Promise.all(
-    blocks.map(async (b) => {
-      if (typeof b !== 'object' || b === null) return b
-      const block = b as { type?: string; image_url?: string }
-      if (block.type !== 'image' || typeof block.image_url !== 'string') return b
-      const key = storageKeyFromUrl(block.image_url)
-      if (!key) return b // external/CDN URL — already directly fetchable
-      try {
-        return { ...block, image_url: await generatePresignedGetUrl(key) }
-      } catch (error) {
-        log.warn({ err: error, key }, 'failed to presign changelog image, leaving url as-is')
-        return b
+  for (const img of images) {
+    const key = storageKeyFromUrl(img.image_url)
+    if (!key) continue // external/CDN image — no local bytes to upload
+    try {
+      const { body } = await getS3Object(key)
+      const buffer = Buffer.from(await new Response(body).arrayBuffer())
+      const filename = key.split('/').pop() || 'image'
+      const title = img.alt_text || filename
+      // Split by thread vs channel destination: the SDK's union types
+      // `thread_ts` as either a definite string or `never`, so it can't be
+      // passed as `string | undefined`.
+      if (threadTs) {
+        await client.files.uploadV2({
+          channel_id: channelId,
+          thread_ts: threadTs,
+          file: buffer,
+          filename,
+          title,
+        })
+      } else {
+        await client.files.uploadV2({ channel_id: channelId, file: buffer, filename, title })
       }
-    })
-  )
+    } catch (error) {
+      log.warn({ err: error, key }, 'failed to upload changelog image to slack')
+    }
+  }
 }
 
 /**
@@ -131,34 +164,6 @@ async function postMessage(
       })
     }
 
-    // `invalid_blocks` is usually Slack failing to download an image block
-    // server-side (private/unreachable portal, expired presign, etc). One bad
-    // image would otherwise drop the whole announcement, so retry once without
-    // any image blocks — the text + formatting still gets delivered.
-    const hasImageBlock =
-      Array.isArray(message.blocks) &&
-      message.blocks.some(
-        (b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image'
-      )
-    if (errorCode === 'invalid_blocks' && hasImageBlock) {
-      const fallback = {
-        ...message,
-        blocks: message.blocks!.filter(
-          (b) => !(typeof b === 'object' && b !== null && (b as { type?: string }).type === 'image')
-        ),
-      }
-      log.warn(
-        { channel_id: channelId },
-        'invalid_blocks with images present, retrying without image blocks'
-      )
-      return await client.chat.postMessage({
-        channel: channelId,
-        unfurl_links: false,
-        unfurl_media: false,
-        ...fallback,
-      })
-    }
-
     throw error
   }
 }
@@ -172,15 +177,20 @@ export const slackHook: HookHandler = {
 
     const client = new WebClient(accessToken)
     const message = buildSlackMessage(event, rootUrl)
-    // Point Slack's server-side image fetch at presigned S3 URLs so images
-    // render even when the portal itself is internal-only.
-    message.blocks = await resolveImageBlockUrls(message.blocks)
+    // Images are uploaded as native Slack files after the message posts, not
+    // embedded as image blocks (those need a Slack-reachable, non-expiring URL).
+    const { textBlocks, imageBlocks } = splitImageBlocks(message.blocks)
 
     try {
-      const result = await postMessage(client, channelId, message)
+      const result = await postMessage(client, channelId, { ...message, blocks: textBlocks })
 
       if (result.ok) {
         log.info({ channel_id: channelId, message_ts: result.ts }, 'posted message to channel')
+        // Thread the images under the announcement. Best-effort — never fails
+        // the hook, since the text has already been delivered.
+        if (imageBlocks.length > 0) {
+          await uploadImages(client, channelId, result.ts, imageBlocks)
+        }
       } else {
         log.error({ channel_id: channelId, error_code: result.error }, 'failed to post message')
       }
