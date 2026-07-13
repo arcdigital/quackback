@@ -11,8 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useUpdateIntegration } from '@/lib/client/mutations'
+import { useUpdateIntegration, useEnableStatusSync } from '@/lib/client/mutations'
 import { fetchExternalStatusesFn } from '@/lib/server/functions/external-statuses'
 import {
   StatusSyncConfig,
@@ -67,6 +70,7 @@ export function JiraConfig({
   enabled,
 }: JiraConfigProps) {
   const updateMutation = useUpdateIntegration()
+  const enableSync = useEnableStatusSync()
 
   const { projectId: initialProjectId, issueTypeId: initialIssueTypeId } = parseChannelId(
     (initialConfig.channelId as string) || ''
@@ -81,6 +85,12 @@ export function JiraConfig({
   const [loadingIssueTypes, setLoadingIssueTypes] = useState(false)
   const [issueTypeError, setIssueTypeError] = useState<string | null>(null)
   const [selectedIssueType, setSelectedIssueType] = useState(initialIssueTypeId)
+
+  const [webhookProjectKeys, setWebhookProjectKeys] = useState<string[]>(
+    Array.isArray(initialConfig.webhookProjectKeys)
+      ? (initialConfig.webhookProjectKeys as string[])
+      : []
+  )
 
   const [externalStatuses, setExternalStatuses] = useState<ExternalStatus[]>([])
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
@@ -149,6 +159,28 @@ export function JiraConfig({
     updateMutation.mutate({ id: integrationId, config: { channelId } })
   }
 
+  const statusSyncEnabled = (initialConfig.statusSyncEnabled as boolean) ?? false
+
+  const handleWebhookProjectToggle = (projectKey: string, checked: boolean) => {
+    const next = checked
+      ? [...webhookProjectKeys, projectKey]
+      : webhookProjectKeys.filter((k) => k !== projectKey)
+    setWebhookProjectKeys(next)
+    updateMutation.mutate(
+      { id: integrationId, config: { webhookProjectKeys: next } },
+      {
+        // If status sync is already on, re-register the Jira webhook so the new
+        // project filter takes effect immediately (enable is idempotent and
+        // removes the previous registration first).
+        onSuccess: () => {
+          if (statusSyncEnabled) {
+            enableSync.mutate({ integrationId, integrationType: 'jira' })
+          }
+        },
+      }
+    )
+  }
+
   const handleEventToggle = (eventId: string, checked: boolean) => {
     const newSettings = { ...eventSettings, [eventId]: checked }
     setEventSettings(newSettings)
@@ -161,7 +193,7 @@ export function JiraConfig({
     })
   }
 
-  const saving = updateMutation.isPending
+  const saving = updateMutation.isPending || enableSync.isPending
 
   return (
     <div className="space-y-6">
@@ -302,6 +334,56 @@ export function JiraConfig({
           {updateMutation.error?.message || 'Failed to save changes'}
         </div>
       )}
+
+      <div className="space-y-2">
+        <Label>Status sync projects</Label>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-start font-normal"
+              disabled={loadingProjects || saving || !integrationEnabled}
+            >
+              {webhookProjectKeys.length === 0 ? (
+                <span className="text-muted-foreground">All projects</span>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {webhookProjectKeys.map((key) => (
+                    <Badge key={key} variant="secondary">
+                      {key}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-2">
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {projects.map((project) => (
+                <label
+                  key={project.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={webhookProjectKeys.includes(project.key)}
+                    onCheckedChange={(checked) =>
+                      handleWebhookProjectToggle(project.key, checked === true)
+                    }
+                  />
+                  <span className="text-sm">
+                    {project.key} - {project.name}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+        <p className="text-xs text-muted-foreground">
+          Restrict which Jira projects send status updates back to Quackback. Leave empty to receive
+          updates from all projects. When status sync is on, changes re-register the webhook
+          automatically.
+        </p>
+      </div>
 
       <StatusSyncConfig
         integrationId={integrationId}

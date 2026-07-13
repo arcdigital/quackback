@@ -18,6 +18,62 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'status-sync' })
 
+/**
+ * Delete a previously-registered external webhook for an integration.
+ * Best-effort: failures are logged and swallowed so callers can continue
+ * (e.g. clearing local config even if the remote delete fails).
+ */
+async function deleteExternalWebhook(
+  integrationType: string,
+  accessToken: string,
+  config: Record<string, unknown>,
+  externalWebhookId: string
+): Promise<void> {
+  try {
+    switch (integrationType) {
+      case 'linear': {
+        const { deleteLinearWebhook } =
+          await import('@/lib/server/integrations/linear/webhook-registration')
+        await deleteLinearWebhook(accessToken, externalWebhookId)
+        break
+      }
+      case 'github': {
+        const { deleteGitHubWebhook } =
+          await import('@/lib/server/integrations/github/webhook-registration')
+        const ownerRepo = config.channelId as string
+        if (ownerRepo) {
+          await deleteGitHubWebhook(accessToken, ownerRepo, externalWebhookId)
+        }
+        break
+      }
+      case 'jira': {
+        const { deleteJiraWebhook } =
+          await import('@/lib/server/integrations/jira/webhook-registration')
+        const cloudId = config.cloudId as string
+        if (cloudId) {
+          await deleteJiraWebhook(accessToken, cloudId, externalWebhookId)
+        }
+        break
+      }
+      case 'clickup': {
+        const { deleteClickUpWebhook } =
+          await import('@/lib/server/integrations/clickup/webhook-registration')
+        await deleteClickUpWebhook(accessToken, externalWebhookId)
+        break
+      }
+      case 'asana': {
+        const { deleteAsanaWebhook } =
+          await import('@/lib/server/integrations/asana/webhook-registration')
+        await deleteAsanaWebhook(accessToken, externalWebhookId)
+        break
+      }
+    }
+  } catch (error) {
+    log.error({ err: error, integration_type: integrationType }, 'webhook deletion failed')
+    // Continue even if external deletion fails
+  }
+}
+
 const enableStatusSyncSchema = z.object({
   integrationId: z.string(),
   integrationType: z.string(),
@@ -67,6 +123,14 @@ export const enableStatusSyncFn = createServerFn({ method: 'POST' })
         accessToken = secrets.accessToken
       }
 
+      // Idempotency: if a webhook was already registered (e.g. sync is being
+      // re-run to apply changed project filters), remove it first so we don't
+      // orphan the old registration on the external platform.
+      const existingWebhookId = config.externalWebhookId as string | undefined
+      if (accessToken && existingWebhookId) {
+        await deleteExternalWebhook(data.integrationType, accessToken, config, existingWebhookId)
+      }
+
       // Auto-register webhook for platforms that support it
       if (accessToken) {
         try {
@@ -98,7 +162,16 @@ export const enableStatusSyncFn = createServerFn({ method: 'POST' })
                 await import('@/lib/server/integrations/jira/webhook-registration')
               const cloudId = config.cloudId as string
               if (!cloudId) throw new Error('No Jira Cloud ID configured')
-              const result = await registerJiraWebhook(accessToken, cloudId, callbackUrl, secret)
+              const projectKeys = Array.isArray(config.webhookProjectKeys)
+                ? (config.webhookProjectKeys as string[])
+                : undefined
+              const result = await registerJiraWebhook(
+                accessToken,
+                cloudId,
+                callbackUrl,
+                secret,
+                projectKeys
+              )
               externalWebhookId = result.webhookId
               break
             }
@@ -173,54 +246,14 @@ export const disableStatusSyncFn = createServerFn({ method: 'POST' })
 
       // Clean up external webhook if one was registered
       if (externalWebhookId && integration.secrets) {
-        try {
-          const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
-          if (secrets.accessToken) {
-            switch (data.integrationType) {
-              case 'linear': {
-                const { deleteLinearWebhook } =
-                  await import('@/lib/server/integrations/linear/webhook-registration')
-                await deleteLinearWebhook(secrets.accessToken, externalWebhookId)
-                break
-              }
-              case 'github': {
-                const { deleteGitHubWebhook } =
-                  await import('@/lib/server/integrations/github/webhook-registration')
-                const ownerRepo = config.channelId as string
-                if (ownerRepo) {
-                  await deleteGitHubWebhook(secrets.accessToken, ownerRepo, externalWebhookId)
-                }
-                break
-              }
-              case 'jira': {
-                const { deleteJiraWebhook } =
-                  await import('@/lib/server/integrations/jira/webhook-registration')
-                const cloudId = config.cloudId as string
-                if (cloudId) {
-                  await deleteJiraWebhook(secrets.accessToken, cloudId, externalWebhookId)
-                }
-                break
-              }
-              case 'clickup': {
-                const { deleteClickUpWebhook } =
-                  await import('@/lib/server/integrations/clickup/webhook-registration')
-                await deleteClickUpWebhook(secrets.accessToken, externalWebhookId)
-                break
-              }
-              case 'asana': {
-                const { deleteAsanaWebhook } =
-                  await import('@/lib/server/integrations/asana/webhook-registration')
-                await deleteAsanaWebhook(secrets.accessToken, externalWebhookId)
-                break
-              }
-            }
-          }
-        } catch (error) {
-          log.error(
-            { err: error, integration_type: data.integrationType },
-            'webhook deletion failed'
+        const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
+        if (secrets.accessToken) {
+          await deleteExternalWebhook(
+            data.integrationType,
+            secrets.accessToken,
+            config,
+            externalWebhookId
           )
-          // Continue with cleanup even if external deletion fails
         }
       }
 

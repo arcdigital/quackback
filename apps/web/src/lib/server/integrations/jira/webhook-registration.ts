@@ -10,13 +10,30 @@ interface JiraWebhookResult {
 }
 
 /**
+ * Build the JQL filter scoping which issues trigger the webhook.
+ * When project keys are provided, the webhook only fires for those projects;
+ * otherwise it fires for all projects.
+ */
+function buildWebhookJql(projectKeys?: string[]): string {
+  const keys = (projectKeys ?? []).map((k) => k.trim()).filter(Boolean)
+  if (keys.length === 0) return 'project is not EMPTY'
+  // Project keys are alphanumeric identifiers; quote each defensively for JQL.
+  const quoted = keys.map((k) => `"${k.replace(/"/g, '\\"')}"`).join(', ')
+  return `project in (${quoted})`
+}
+
+/**
  * Register a webhook with Jira to receive issue update events.
+ *
+ * When `projectKeys` is provided and non-empty, the webhook is scoped to those
+ * projects; otherwise it fires for all projects.
  */
 export async function registerJiraWebhook(
   accessToken: string,
   cloudId: string,
   callbackUrl: string,
-  _secret: string
+  _secret: string,
+  projectKeys?: string[]
 ): Promise<JiraWebhookResult> {
   const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
     method: 'POST',
@@ -29,7 +46,7 @@ export async function registerJiraWebhook(
       url: callbackUrl,
       webhooks: [
         {
-          jqlFilter: 'project is not EMPTY',
+          jqlFilter: buildWebhookJql(projectKeys),
           events: ['jira:issue_updated'],
         },
       ],
