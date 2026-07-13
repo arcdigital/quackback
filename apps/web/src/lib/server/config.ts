@@ -68,6 +68,10 @@ const configSchema = z.object({
   // Core
   nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
   baseUrl: z.string().url(),
+  // Optional override for the externally-reachable base URL used when
+  // registering inbound webhooks (e.g. a public tunnel/proxy domain).
+  // Falls back to baseUrl when unset. Path is unchanged.
+  webhookBaseUrl: z.string().url().optional(),
   port: envInt.default(3000),
 
   // Database
@@ -138,6 +142,7 @@ function buildConfigFromEnv(): unknown {
     // Core
     nodeEnv: process.env.NODE_ENV,
     baseUrl: process.env.BASE_URL,
+    webhookBaseUrl: env('WEBHOOK_BASE_URL'),
     port: env('PORT'),
 
     // Database
@@ -242,6 +247,9 @@ export const config = {
   },
   get baseUrl() {
     return loadConfig().baseUrl
+  },
+  get webhookBaseUrl() {
+    return loadConfig().webhookBaseUrl
   },
   get port() {
     return loadConfig().port

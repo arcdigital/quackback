@@ -18,9 +18,14 @@ export function generateWebhookSecret(): string {
 
 /**
  * Build the callback URL for an integration type.
+ *
+ * Uses WEBHOOK_BASE_URL when configured (e.g. a public proxy/tunnel domain that
+ * external platforms can reach), otherwise falls back to the app's base URL.
+ * The path is identical in both cases.
  */
 export function buildWebhookCallbackUrl(integrationType: string): string {
-  return `${config.baseUrl}/api/integrations/${integrationType}/webhook`
+  const base = config.webhookBaseUrl ?? config.baseUrl
+  return `${base}/api/integrations/${integrationType}/webhook`
 }
 
 /**
