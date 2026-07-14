@@ -108,6 +108,7 @@ async function resolveByEmail(
     id: principalId,
     userId,
     role: 'user' as const,
+    displayName,
     createdAt: new Date(),
   })
 
@@ -168,6 +169,7 @@ async function resolveByExternalId(
     id: principalId,
     userId,
     role: 'user' as const,
+    displayName,
     createdAt: new Date(),
   })
 
