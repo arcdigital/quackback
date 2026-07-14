@@ -122,7 +122,7 @@ export async function acceptCreateSuggestion(
     columns: { embedding: false },
     with: {
       rawItem: {
-        columns: { principalId: true, sourceType: true },
+        columns: { principalId: true, sourceType: true, contextEnvelope: true },
       },
     },
   })
@@ -263,6 +263,13 @@ export async function acceptCreateSuggestion(
       },
     },
   })
+
+  // For Slack-sourced feedback, reply in-thread to the original message with a
+  // link to the newly created post. Best-effort — never blocks the accept.
+  if (suggestion.rawItem?.sourceType === 'slack') {
+    const { replyToSlackSource } = await import('@/lib/server/integrations/slack/reply')
+    await replyToSlackSource(suggestion.rawItem.contextEnvelope, boardId, newPostId, title)
+  }
 
   return { success: true, resultPostId: newPostId }
 }
