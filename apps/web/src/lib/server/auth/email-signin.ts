@@ -64,6 +64,6 @@ export async function requestEmailSignin(opts: {
     signInUrl,
     code: otp,
     workspaceName: settings?.name ?? 'your workspace',
-    logoUrl: getEmailSafeUrl(settings?.logoKey) ?? undefined,
+    logoUrl: (await getEmailSafeUrl(settings?.logoKey)) ?? undefined,
   })
 }

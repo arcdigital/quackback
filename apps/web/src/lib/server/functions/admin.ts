@@ -987,7 +987,7 @@ export const sendInvitationFn = createServerFn({ method: 'POST' })
       })
 
       const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
-      const logoUrl = getEmailSafeUrl(auth.settings.logoKey) ?? undefined
+      const logoUrl = (await getEmailSafeUrl(auth.settings.logoKey)) ?? undefined
       const result = await sendInvitationEmail({
         to: email,
         invitedByName: auth.user.name,
@@ -1140,7 +1140,7 @@ export const resendInvitationFn = createServerFn({ method: 'POST' })
       }
 
       const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
-      const logoUrl = getEmailSafeUrl(auth.settings.logoKey) ?? undefined
+      const logoUrl = (await getEmailSafeUrl(auth.settings.logoKey)) ?? undefined
       let result: Awaited<ReturnType<typeof sendInvitationEmail>>
       try {
         result = await sendInvitationEmail({

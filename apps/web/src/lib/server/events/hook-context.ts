@@ -43,6 +43,6 @@ export async function buildHookContext(): Promise<HookContext | null> {
   return {
     workspaceName: settings.name,
     portalBaseUrl: getBaseUrl(),
-    logoUrl: getEmailSafeUrl(settings.logoKey),
+    logoUrl: await getEmailSafeUrl(settings.logoKey),
   }
 }

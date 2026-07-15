@@ -280,7 +280,7 @@ async function createAuth() {
         const settings = await db.query.settings.findFirst({
           columns: { logoKey: true, name: true },
         })
-        const logoUrl = getEmailSafeUrl(settings?.logoKey) ?? undefined
+        const logoUrl = (await getEmailSafeUrl(settings?.logoKey)) ?? undefined
         await sendPasswordResetEmail({
           to: user.email,
           resetLink: url,

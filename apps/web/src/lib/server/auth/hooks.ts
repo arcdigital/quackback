@@ -1038,10 +1038,10 @@ export async function handleNewDeviceNotification(
         occurredAt,
         ipAddress: ip,
         userAgent,
-        // Email-safe URL streams bytes via the proxy (?email=1); the plain
-        // brandingData.logoUrl 302-redirects to a presigned S3 URL, which
-        // Gmail's image proxy won't follow — the logo silently fails to load.
-        logoUrl: getEmailSafeUrl(tenant?.settings?.logoKey) ?? undefined,
+        // Email-safe URL is a presigned S3 URL pointing at the public S3
+        // endpoint; the plain brandingData.logoUrl routes through the app host,
+        // which may be internal-only and unreachable by Gmail's image proxy.
+        logoUrl: (await getEmailSafeUrl(tenant?.settings?.logoKey)) ?? undefined,
       }),
       recordAuditEvent({
         event: 'auth.signin.new_device',

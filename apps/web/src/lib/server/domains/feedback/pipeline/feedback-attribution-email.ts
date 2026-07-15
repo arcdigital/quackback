@@ -85,7 +85,7 @@ export async function sendFeedbackAttributionEmail(
       workspaceName,
       unsubscribeUrl,
       attributedByName,
-      logoUrl: getEmailSafeUrl(workspace?.logoKey) ?? undefined,
+      logoUrl: (await getEmailSafeUrl(workspace?.logoKey)) ?? undefined,
     })
   } catch (error) {
     // Never fail the accept flow due to email errors

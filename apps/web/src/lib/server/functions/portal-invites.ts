@@ -163,7 +163,7 @@ async function sendOnePortalInvite({
   })
 
   const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
-  const logoUrl = getEmailSafeUrl(auth.settings.logoKey) ?? undefined
+  const logoUrl = (await getEmailSafeUrl(auth.settings.logoKey)) ?? undefined
   await sendPortalInviteEmail({
     to: email,
     workspaceName: auth.settings.name,
@@ -406,7 +406,7 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
     }
 
     const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
-    const logoUrl = getEmailSafeUrl(auth.settings.logoKey) ?? undefined
+    const logoUrl = (await getEmailSafeUrl(auth.settings.logoKey)) ?? undefined
     let result: Awaited<ReturnType<typeof sendPortalInviteEmail>>
     try {
       result = await sendPortalInviteEmail({
