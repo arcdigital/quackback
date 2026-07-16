@@ -34,6 +34,40 @@ export async function listJiraProjects(
 }
 
 /**
+ * Fetch a single Jira issue by key (e.g. "QUA-24") to validate it exists and
+ * get its summary. Returns null when the issue is not found (HTTP 404).
+ */
+export async function getJiraIssue(
+  accessToken: string,
+  cloudId: string,
+  issueKey: string
+): Promise<{ id: string; key: string; summary: string } | null> {
+  const params = new URLSearchParams({ fields: 'summary' })
+  const response = await fetch(
+    `${JIRA_API_BASE}/${cloudId}/rest/api/3/issue/${encodeURIComponent(issueKey)}?${params}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    }
+  )
+
+  if (response.status === 404) return null
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Jira issue: HTTP ${response.status}`)
+  }
+
+  const data = (await response.json()) as {
+    id: string
+    key: string
+    fields?: { summary?: string }
+  }
+
+  return { id: data.id, key: data.key, summary: data.fields?.summary ?? data.key }
+}
+
+/**
  * List Jira issue types for a given project.
  */
 export async function listJiraIssueTypes(

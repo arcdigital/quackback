@@ -33,6 +33,7 @@ import {
 } from '@/components/admin/feedback/merge-section'
 import { AiSummaryCard } from '@/components/admin/feedback/ai-summary-card'
 import { SimilarPostsCard } from '@/components/admin/feedback/similar-posts-card'
+import { LinkedIssuesCard } from '@/components/admin/feedback/linked-issues-card'
 import { PostActivityTimeline } from '@/components/admin/feedback/detail/post-activity-timeline'
 import { useNavigationContext } from '@/components/admin/feedback/detail/use-navigation-context'
 import {
@@ -421,6 +422,7 @@ function PostModalContent({
                   isRegenerating={isRegeneratingSummary}
                 />
                 <SimilarPostsCard postId={postId} onNavigateToPost={onNavigateToPost} />
+                <LinkedIssuesCard postId={postId} />
               </div>
             </div>
 

@@ -13,6 +13,7 @@ import {
   type SegmentId,
   type PrincipalId,
   type UserId,
+  type LinkedEntityId,
 } from '@quackback/ids'
 import { tiptapContentSchema, type TiptapContent } from '@/lib/shared/schemas/posts'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
@@ -30,6 +31,7 @@ import { softDeletePost, restorePost } from '@/lib/server/domains/posts/post.use
 import {
   getPostExternalLinks,
   executeCascadeDelete,
+  deletePostExternalLink,
 } from '@/lib/server/domains/posts/post.cascade-delete'
 import { hasUserVoted } from '@/lib/server/domains/posts/post.public.utils'
 import { getMergedPosts, getPostMergeInfo } from '@/lib/server/domains/posts/post.merge'
@@ -489,6 +491,23 @@ export const fetchPostExternalLinksFn = createServerFn({ method: 'GET' })
       return links
     } catch (error) {
       log.error({ err: error }, 'fetch post external links failed')
+      throw error
+    }
+  })
+
+/**
+ * Remove a manual external link from a post (does not modify the external issue).
+ */
+export const unlinkPostExternalLinkFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ postId: z.string(), linkId: z.string() }))
+  .handler(async ({ data }) => {
+    log.info({ post_id: data.postId, link_id: data.linkId }, 'unlink post external link')
+    try {
+      await requireAuth({ roles: ['admin', 'member'] })
+      await deletePostExternalLink(data.postId as PostId, data.linkId as LinkedEntityId)
+      return { success: true }
+    } catch (error) {
+      log.error({ err: error }, 'unlink post external link failed')
       throw error
     }
   })

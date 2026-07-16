@@ -78,6 +78,20 @@ export async function getPostExternalLinks(postId: PostId): Promise<PostExternal
   })
 }
 
+/**
+ * Remove a single external link from a post (manual unlink). Scoped by postId so
+ * a link id from one post can't delete another's. Does not touch the external
+ * issue itself — it only removes the association in Quackback.
+ */
+export async function deletePostExternalLink(
+  postId: PostId,
+  linkId: LinkedEntityId
+): Promise<void> {
+  await db
+    .delete(postExternalLinks)
+    .where(and(eq(postExternalLinks.id, linkId), eq(postExternalLinks.postId, postId)))
+}
+
 // ============================================================================
 // Token refresh
 // ============================================================================
