@@ -317,9 +317,31 @@ async function getIntegrationTargets(
         const secrets = decryptSecrets<{ accessToken?: string }>(m.secrets)
         accessToken = secrets.accessToken
       } catch (error) {
-        log.error({ err: error, integration_type: m.integrationType }, 'failed to decrypt integration secrets')
+        log.error(
+          { err: error, integration_type: m.integrationType },
+          'failed to decrypt integration secrets'
+        )
         continue
       }
+    }
+
+    // Jira needs extra config the generic builder doesn't carry: its channelId
+    // is stored as "projectId:issueTypeId", and the hook requires cloudId (for
+    // the API host) and siteUrl (for browse links) from the integration config.
+    if (m.integrationType === 'jira') {
+      const [projectId, issueTypeId] = channelId.split(':')
+      targets.push({
+        type: m.integrationType,
+        target: { channelId: projectId },
+        config: {
+          accessToken,
+          rootUrl: context.portalBaseUrl,
+          cloudId: integrationConfig.cloudId as string | undefined,
+          siteUrl: integrationConfig.siteUrl as string | undefined,
+          issueTypeId: issueTypeId || undefined,
+        },
+      })
+      continue
     }
 
     targets.push({

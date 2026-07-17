@@ -32,24 +32,20 @@ interface AdfDoc {
 }
 
 /**
- * Build a Jira issue title and ADF description from a post.created event.
+ * Build a Jira issue title and ADF description from post fields.
+ * Shared by the outbound hook and the manual "Create Jira issue" action.
  */
-export function buildJiraIssueBody(
-  event: EventData,
+export function buildJiraIssueBodyFromPost(
+  post: {
+    id: string
+    title: string
+    content: string
+    boardSlug: string
+    authorName?: string | null
+    authorEmail?: string | null
+  },
   rootUrl: string
 ): { title: string; description: AdfDoc } {
-  if (event.type !== 'post.created') {
-    return {
-      title: 'Feedback',
-      description: {
-        version: 1,
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }],
-      },
-    }
-  }
-
-  const { post } = event.data
   const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)
   const content = truncate(stripHtml(post.content), 2000)
   const author = getAuthorName(post)
@@ -85,4 +81,36 @@ export function buildJiraIssueBody(
   }
 
   return { title: post.title, description }
+}
+
+/**
+ * Build a Jira issue title and ADF description from a post.created event.
+ */
+export function buildJiraIssueBody(
+  event: EventData,
+  rootUrl: string
+): { title: string; description: AdfDoc } {
+  if (event.type !== 'post.created') {
+    return {
+      title: 'Feedback',
+      description: {
+        version: 1,
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }],
+      },
+    }
+  }
+
+  const { post } = event.data
+  return buildJiraIssueBodyFromPost(
+    {
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      boardSlug: post.boardSlug,
+      authorName: post.authorName,
+      authorEmail: post.authorEmail,
+    },
+    rootUrl
+  )
 }

@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { usePostExternalLinks } from '@/lib/client/hooks/use-post-external-links-query'
-import { useLinkJiraIssue, useUnlinkExternalLink } from '@/lib/client/mutations'
+import { JiraIcon } from '@/components/icons/integration-icons'
+import { useLinkJiraIssue, useCreateJiraIssue, useUnlinkExternalLink } from '@/lib/client/mutations'
 import type { PostId } from '@quackback/ids'
 
 interface LinkedIssuesCardProps {
@@ -27,8 +28,13 @@ export function LinkedIssuesCard({ postId }: LinkedIssuesCardProps) {
   const linksQuery = usePostExternalLinks(postId, true)
   const { data: jira } = useQuery(adminQueries.integrationByType('jira'))
   const jiraConnected = jira?.integration?.status === 'active'
+  // channelId is "projectId:issueTypeId"; a create needs at least a project.
+  const jiraProjectConfigured = Boolean(
+    (jira?.integration?.config?.channelId as string | undefined)?.split(':')[0]
+  )
 
   const linkJira = useLinkJiraIssue(postId)
+  const createJira = useCreateJiraIssue(postId)
   const unlink = useUnlinkExternalLink(postId)
 
   const links = linksQuery.data ?? []
@@ -45,6 +51,15 @@ export function LinkedIssuesCard({ postId }: LinkedIssuesCardProps) {
       setIssueRef('')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to link issue')
+    }
+  }
+
+  const handleCreate = async () => {
+    try {
+      const result = await createJira.mutateAsync()
+      toast.success(`Created ${result.issueKey}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create issue')
     }
   }
 
@@ -109,28 +124,43 @@ export function LinkedIssuesCard({ postId }: LinkedIssuesCardProps) {
       )}
 
       {jiraConnected && (
-        <div className="flex items-center gap-2">
-          <Input
-            value={issueRef}
-            onChange={(e) => setIssueRef(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleLink()
-              }
-            }}
-            placeholder="Jira issue key or URL (e.g. QUA-24)"
-            disabled={linkJira.isPending}
-            className="h-8 text-sm"
-          />
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleLink}
-            disabled={linkJira.isPending || !issueRef.trim()}
-          >
-            {linkJira.isPending ? 'Linking...' : 'Link'}
-          </Button>
+        <div className="space-y-2">
+          {jiraProjectConfigured && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full gap-2"
+              onClick={handleCreate}
+              disabled={createJira.isPending}
+            >
+              <JiraIcon className="h-4 w-4" />
+              {createJira.isPending ? 'Creating...' : 'Create Jira issue'}
+            </Button>
+          )}
+          <div className="flex items-center gap-2">
+            <Input
+              value={issueRef}
+              onChange={(e) => setIssueRef(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleLink()
+                }
+              }}
+              placeholder="Jira issue key or URL (e.g. QUA-24)"
+              disabled={linkJira.isPending}
+              className="h-8 text-sm"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleLink}
+              disabled={linkJira.isPending || !issueRef.trim()}
+            >
+              {linkJira.isPending ? 'Linking...' : 'Link'}
+            </Button>
+          </div>
         </div>
       )}
     </div>

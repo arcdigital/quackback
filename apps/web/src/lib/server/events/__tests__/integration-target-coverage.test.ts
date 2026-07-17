@@ -33,8 +33,20 @@ vi.mock('@/lib/server/db', () => ({
     select: () => ({ from: () => ({ innerJoin: () => ({ where: () => [] }) }) }),
     query: { webhooks: { findMany: vi.fn().mockResolvedValue([]) } },
   },
-  integrations: { id: 'id', integrationType: 'integrationType', secrets: 'secrets', config: 'config', status: 'status' },
-  integrationEventMappings: { integrationId: 'integrationId', eventType: 'eventType', actionConfig: 'actionConfig', filters: 'filters', enabled: 'enabled' },
+  integrations: {
+    id: 'id',
+    integrationType: 'integrationType',
+    secrets: 'secrets',
+    config: 'config',
+    status: 'status',
+  },
+  integrationEventMappings: {
+    integrationId: 'integrationId',
+    eventType: 'eventType',
+    actionConfig: 'actionConfig',
+    filters: 'filters',
+    enabled: 'enabled',
+  },
   webhooks: { status: 'status', deletedAt: 'deletedAt', $inferSelect: {} },
   eq: vi.fn(),
   and: vi.fn(),
@@ -79,12 +91,21 @@ const { listIntegrationTypes, getIntegrationHook } = await import('@/lib/server/
  * Enrichment hooks that store NO channelId at connect time are listed in
  * KNOWN_UNRESOLVED below, not here — do not fabricate a channelId for them.
  */
-const CONNECTED_FIXTURES: Record<string, { integrationConfig?: Record<string, unknown>; actionConfig?: Record<string, unknown> }> = {
+const CONNECTED_FIXTURES: Record<
+  string,
+  { integrationConfig?: Record<string, unknown>; actionConfig?: Record<string, unknown> }
+> = {
   slack: { actionConfig: { channelId: 'C1' } },
   discord: { actionConfig: { channelId: 'C1' } },
   teams: { integrationConfig: { channelId: 'C1' } },
   linear: { integrationConfig: { channelId: 'team_1' } },
-  jira: { integrationConfig: { channelId: 'PROJ:10001' } },
+  jira: {
+    integrationConfig: {
+      channelId: 'PROJ:10001',
+      cloudId: 'cloud-1',
+      siteUrl: 'https://acme.atlassian.net',
+    },
+  },
   github: { integrationConfig: { channelId: 'octo/repo' } },
   gitlab: { integrationConfig: { channelId: '42' } },
   asana: { integrationConfig: { channelId: 'project_1' } },
@@ -175,6 +196,25 @@ describe('integration target coverage', () => {
 
     const targets = await getHookTargets(makePostCreatedEvent())
     expect(targets.filter((t) => t.type === type).length).toBeGreaterThan(0)
+  })
+
+  // Jira's channelId is "projectId:issueTypeId" and its hook needs cloudId +
+  // siteUrl from the integration config. Regression guard for the HTTP 404 bug
+  // (POST to .../ex/jira/undefined/... with an unsplit project id).
+  it('enriches the Jira target with split project id, cloudId, and issue type', async () => {
+    mockCacheGet
+      .mockResolvedValueOnce([mappingRow('jira', CONNECTED_FIXTURES.jira)]) // INTEGRATION_MAPPINGS
+      .mockResolvedValueOnce([]) // ACTIVE_WEBHOOKS
+
+    const targets = await getHookTargets(makePostCreatedEvent())
+    const jira = targets.find((t) => t.type === 'jira')
+    expect(jira).toBeDefined()
+    expect(jira!.target).toEqual({ channelId: 'PROJ' })
+    expect(jira!.config).toMatchObject({
+      cloudId: 'cloud-1',
+      siteUrl: 'https://acme.atlassian.net',
+      issueTypeId: '10001',
+    })
   })
 
   // Honest pin of the known gap: these enrichment hooks store no channelId, so

@@ -61,7 +61,7 @@ export {
 export { useEnableStatusSync, useDisableStatusSync, useUpdateStatusMappings } from './status-sync'
 
 // Post external link mutations (manual issue linking)
-export { useLinkJiraIssue, useUnlinkExternalLink } from './post-external-links'
+export { useLinkJiraIssue, useCreateJiraIssue, useUnlinkExternalLink } from './post-external-links'
 
 // Platform credential mutations
 export { useSavePlatformCredentials, useDeletePlatformCredentials } from './platform-credentials'

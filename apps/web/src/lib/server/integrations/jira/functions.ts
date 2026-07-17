@@ -245,3 +245,109 @@ export const linkJiraIssueFn = createServerFn({ method: 'POST' })
 
     return { issueKey: issue.key, summary: issue.summary, externalUrl }
   })
+
+const createJiraIssueSchema = z.object({
+  postId: z.string().min(1),
+})
+
+/**
+ * Manually create a Jira issue from a post and link it. Uses the project +
+ * issue type configured on the Jira integration (config.channelId =
+ * "projectId:issueTypeId"). This is the on-demand equivalent of the outbound
+ * post.created hook, exposed as a per-post admin action.
+ */
+export const createJiraIssueFn = createServerFn({ method: 'POST' })
+  .validator(createJiraIssueSchema)
+  .handler(async ({ data }) => {
+    const { requireAuth } = await import('../../functions/auth-helpers')
+    const { db, integrations, postExternalLinks, eq } = await import('@/lib/server/db')
+    const { getPostWithDetails } = await import('@/lib/server/domains/posts/post.query')
+    const { buildJiraIssueBodyFromPost } = await import('./message')
+    const { getBaseUrl } = await import('@/lib/server/config')
+    const { logger } = await import('@/lib/server/logger')
+    const log = logger.child({ component: 'jira' })
+
+    await requireAuth({ roles: ['admin', 'member'] })
+
+    const integration = await db.query.integrations.findFirst({
+      where: eq(integrations.integrationType, 'jira'),
+    })
+
+    if (!integration?.secrets || integration.status !== 'active') {
+      throw new Error('Jira not connected')
+    }
+
+    const cfg = (integration.config as JiraIntegrationConfig & { channelId?: string }) ?? {}
+    const cloudId = cfg.cloudId
+    if (!cloudId) {
+      throw new Error('Jira cloud ID not found in integration config')
+    }
+
+    // channelId is stored as "projectId:issueTypeId" by the Jira config UI.
+    const [projectId, issueTypeId] = (cfg.channelId ?? '').split(':')
+    if (!projectId) {
+      throw new Error('No Jira project configured. Set one in Jira integration settings.')
+    }
+
+    const post = await getPostWithDetails(data.postId as PostId)
+    const { title, description } = buildJiraIssueBodyFromPost(
+      {
+        id: post.id,
+        title: post.title,
+        content: post.content ?? '',
+        boardSlug: post.board.slug,
+        authorName: post.authorName,
+        authorEmail: post.authorEmail,
+      },
+      getBaseUrl()
+    )
+
+    const accessToken = await getJiraAccessToken(integration)
+    const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          project: { id: projectId },
+          summary: title,
+          description,
+          ...(issueTypeId ? { issuetype: { id: issueTypeId } } : {}),
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      log.error({ status: response.status, body }, 'jira issue creation failed')
+      throw new Error(`Jira issue creation failed (HTTP ${response.status})`)
+    }
+
+    const result = (await response.json()) as { key?: string }
+    if (!result.key) {
+      throw new Error('No issue key returned from Jira')
+    }
+
+    const externalUrl = cfg.siteUrl
+      ? `${cfg.siteUrl.replace(/\/$/, '')}/browse/${result.key}`
+      : `https://api.atlassian.com/ex/jira/${cloudId}/browse/${result.key}`
+
+    await db
+      .insert(postExternalLinks)
+      .values({
+        postId: data.postId as PostId,
+        integrationId: integration.id as IntegrationId,
+        integrationType: 'jira',
+        externalId: result.key,
+        externalDisplayId: result.key,
+        externalUrl,
+      })
+      .onConflictDoNothing()
+
+    log.info({ post_id: data.postId, issue_key: result.key }, 'created jira issue from post')
+
+    return { issueKey: result.key, externalUrl }
+  })
