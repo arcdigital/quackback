@@ -336,6 +336,7 @@ async function getIntegrationTargets(
         config: {
           accessToken,
           rootUrl: context.portalBaseUrl,
+          workspaceName: context.workspaceName,
           cloudId: integrationConfig.cloudId as string | undefined,
           siteUrl: integrationConfig.siteUrl as string | undefined,
           issueTypeId: issueTypeId || undefined,

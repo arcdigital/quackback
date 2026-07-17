@@ -44,7 +44,8 @@ export function buildJiraIssueBodyFromPost(
     authorName?: string | null
     authorEmail?: string | null
   },
-  rootUrl: string
+  rootUrl: string,
+  workspaceName = 'Quackback'
 ): { title: string; description: AdfDoc } {
   const postUrl = buildPostUrl(rootUrl, post.boardSlug, post.id)
   const content = truncate(stripHtml(post.content), 2000)
@@ -72,7 +73,7 @@ export function buildJiraIssueBodyFromPost(
         content: [
           {
             type: 'text',
-            text: 'View in Quackback',
+            text: `View in ${workspaceName}`,
             marks: [{ type: 'link', attrs: { href: postUrl } }],
           },
         ],
@@ -88,7 +89,8 @@ export function buildJiraIssueBodyFromPost(
  */
 export function buildJiraIssueBody(
   event: EventData,
-  rootUrl: string
+  rootUrl: string,
+  workspaceName = 'Quackback'
 ): { title: string; description: AdfDoc } {
   if (event.type !== 'post.created') {
     return {
@@ -111,6 +113,7 @@ export function buildJiraIssueBody(
       authorName: post.authorName,
       authorEmail: post.authorEmail,
     },
-    rootUrl
+    rootUrl,
+    workspaceName
   )
 }

@@ -290,6 +290,7 @@ export const createJiraIssueFn = createServerFn({ method: 'POST' })
     }
 
     const post = await getPostWithDetails(data.postId as PostId)
+    const settings = await db.query.settings.findFirst({ columns: { name: true } })
     const { title, description } = buildJiraIssueBodyFromPost(
       {
         id: post.id,
@@ -299,7 +300,8 @@ export const createJiraIssueFn = createServerFn({ method: 'POST' })
         authorName: post.authorName,
         authorEmail: post.authorEmail,
       },
-      getBaseUrl()
+      getBaseUrl(),
+      settings?.name || undefined
     )
 
     const accessToken = await getJiraAccessToken(integration)

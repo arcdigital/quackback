@@ -21,6 +21,7 @@ export interface JiraConfig {
   siteUrl?: string
   issueTypeId?: string
   rootUrl: string
+  workspaceName?: string
 }
 
 async function jiraApi(
@@ -53,7 +54,8 @@ async function jiraApi(
 export const jiraHook: HookHandler = {
   async run(event: EventData, target: unknown, config: unknown): Promise<HookResult> {
     const { channelId: projectId } = target as JiraTarget
-    const { accessToken, cloudId, siteUrl, issueTypeId, rootUrl } = config as JiraConfig
+    const { accessToken, cloudId, siteUrl, issueTypeId, rootUrl, workspaceName } =
+      config as JiraConfig
 
     // Only create issues for new feedback
     if (event.type !== 'post.created') {
@@ -62,7 +64,7 @@ export const jiraHook: HookHandler = {
 
     log.debug({ event_type: event.type, project_id: projectId }, 'creating issue')
 
-    const { title, description } = buildJiraIssueBody(event, rootUrl)
+    const { title, description } = buildJiraIssueBody(event, rootUrl, workspaceName)
 
     const issueBody: Record<string, unknown> = {
       fields: {
