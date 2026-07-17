@@ -9,6 +9,7 @@ import type { PostId, LinkedEntityId, IntegrationId } from '@quackback/ids'
 import { db, eq, and, inArray, postExternalLinks, integrations } from '@/lib/server/db'
 import { decryptSecrets, encryptSecrets } from '@/lib/server/integrations/encryption'
 import { archiveExternalIssue } from '@/lib/server/integrations/archive'
+import { getIntegration } from '@/lib/server/integrations'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'post-cascade-delete' })
@@ -64,18 +65,26 @@ export async function getPostExternalLinks(postId: PostId): Promise<PostExternal
     .innerJoin(integrations, eq(postExternalLinks.integrationId, integrations.id))
     .where(and(eq(postExternalLinks.postId, postId), eq(postExternalLinks.status, 'active')))
 
-  return links.map((link) => {
-    const config = (link.integrationConfig ?? {}) as Record<string, unknown>
-    return {
-      id: link.id,
-      integrationType: link.integrationType,
-      externalId: link.externalId,
-      externalDisplayId: link.externalDisplayId,
-      externalUrl: link.externalUrl,
-      integrationActive: link.integrationStatus === 'active',
-      onDeleteDefault: (config.onDeleteAction as string) === 'archive' ? 'archive' : 'nothing',
-    }
-  })
+  return (
+    links
+      // Notification integrations (Slack, Discord, Teams, …) record the delivered
+      // message ID as an external link, but those aren't trackable issues — they
+      // can't be archived on cascade delete and would otherwise surface in the
+      // "Linked issues" card as an opaque message ts. Only show issue-tracker links.
+      .filter((link) => getIntegration(link.integrationType)?.catalog.category !== 'notifications')
+      .map((link) => {
+        const config = (link.integrationConfig ?? {}) as Record<string, unknown>
+        return {
+          id: link.id,
+          integrationType: link.integrationType,
+          externalId: link.externalId,
+          externalDisplayId: link.externalDisplayId,
+          externalUrl: link.externalUrl,
+          integrationActive: link.integrationStatus === 'active',
+          onDeleteDefault: (config.onDeleteAction as string) === 'archive' ? 'archive' : 'nothing',
+        }
+      })
+  )
 }
 
 /**
