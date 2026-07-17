@@ -31,6 +31,9 @@ interface JiraIntegrationConfig {
   siteUrl?: string
   workspaceName?: string
   tokenExpiresAt?: string
+  /** Optional Jira accountId to set as the issue reporter. When unset, Jira
+   *  defaults the reporter to the OAuth account that authorized the integration. */
+  reporterAccountId?: string
 }
 
 export const getJiraConnectUrl = createServerFn({ method: 'GET' }).handler(
@@ -318,6 +321,7 @@ export const createJiraIssueFn = createServerFn({ method: 'POST' })
           summary: title,
           description,
           ...(issueTypeId ? { issuetype: { id: issueTypeId } } : {}),
+          ...(cfg.reporterAccountId ? { reporter: { id: cfg.reporterAccountId } } : {}),
         },
       }),
     })

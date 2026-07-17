@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowPathIcon, FolderIcon } from '@heroicons/react/24/solid'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -85,6 +86,10 @@ export function JiraConfig({
   const [loadingIssueTypes, setLoadingIssueTypes] = useState(false)
   const [issueTypeError, setIssueTypeError] = useState<string | null>(null)
   const [selectedIssueType, setSelectedIssueType] = useState(initialIssueTypeId)
+
+  const [reporterAccountId, setReporterAccountId] = useState<string>(
+    (initialConfig.reporterAccountId as string) || ''
+  )
 
   const [webhookProjectKeys, setWebhookProjectKeys] = useState<string[]>(
     Array.isArray(initialConfig.webhookProjectKeys)
@@ -179,6 +184,12 @@ export function JiraConfig({
         },
       }
     )
+  }
+
+  const handleReporterBlur = () => {
+    const next = reporterAccountId.trim()
+    if (next === ((initialConfig.reporterAccountId as string) || '')) return
+    updateMutation.mutate({ id: integrationId, config: { reporterAccountId: next } })
   }
 
   const handleEventToggle = (eventId: string, checked: boolean) => {
@@ -296,6 +307,23 @@ export function JiraConfig({
         )}
         <p className="text-xs text-muted-foreground">
           The issue type used when creating new issues from feedback.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="reporter-account-id">Reporter account ID</Label>
+        <Input
+          id="reporter-account-id"
+          value={reporterAccountId}
+          onChange={(e) => setReporterAccountId(e.target.value)}
+          onBlur={handleReporterBlur}
+          placeholder="Leave empty to use the connected account"
+          disabled={saving || !integrationEnabled}
+        />
+        <p className="text-xs text-muted-foreground">
+          Jira accountId to set as the reporter on created issues (e.g. a service user). Leave empty
+          to default to the account that authorized the integration. The connected account needs the
+          &ldquo;Modify Reporter&rdquo; project permission for this to apply.
         </p>
       </div>
 

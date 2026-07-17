@@ -340,6 +340,7 @@ async function getIntegrationTargets(
           cloudId: integrationConfig.cloudId as string | undefined,
           siteUrl: integrationConfig.siteUrl as string | undefined,
           issueTypeId: issueTypeId || undefined,
+          reporterAccountId: integrationConfig.reporterAccountId as string | undefined,
         },
       })
       continue

@@ -22,6 +22,8 @@ export interface JiraConfig {
   issueTypeId?: string
   rootUrl: string
   workspaceName?: string
+  /** Optional Jira accountId to set as the issue reporter. */
+  reporterAccountId?: string
 }
 
 async function jiraApi(
@@ -54,8 +56,15 @@ async function jiraApi(
 export const jiraHook: HookHandler = {
   async run(event: EventData, target: unknown, config: unknown): Promise<HookResult> {
     const { channelId: projectId } = target as JiraTarget
-    const { accessToken, cloudId, siteUrl, issueTypeId, rootUrl, workspaceName } =
-      config as JiraConfig
+    const {
+      accessToken,
+      cloudId,
+      siteUrl,
+      issueTypeId,
+      rootUrl,
+      workspaceName,
+      reporterAccountId,
+    } = config as JiraConfig
 
     // Only create issues for new feedback
     if (event.type !== 'post.created') {
@@ -72,6 +81,7 @@ export const jiraHook: HookHandler = {
         summary: title,
         description,
         ...(issueTypeId ? { issuetype: { id: issueTypeId } } : {}),
+        ...(reporterAccountId ? { reporter: { id: reporterAccountId } } : {}),
       },
     }
 
