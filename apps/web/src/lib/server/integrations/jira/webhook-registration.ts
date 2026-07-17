@@ -32,9 +32,16 @@ export async function registerJiraWebhook(
   accessToken: string,
   cloudId: string,
   callbackUrl: string,
-  _secret: string,
+  secret: string,
   projectKeys?: string[]
 ): Promise<JiraWebhookResult> {
+  // Jira Cloud's REST-registered ("dynamic") webhooks do NOT support HMAC
+  // signing — the X-Hub-Signature/`secret` field only applies to legacy admin
+  // (1.0) webhooks. So we authenticate deliveries by embedding the secret as a
+  // query param on the callback URL and validating it in the inbound handler.
+  const signedUrl = new URL(callbackUrl)
+  signedUrl.searchParams.set('secret', secret)
+
   const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
     method: 'POST',
     headers: {
@@ -43,7 +50,7 @@ export async function registerJiraWebhook(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      url: callbackUrl,
+      url: signedUrl.toString(),
       webhooks: [
         {
           jqlFilter: buildWebhookJql(projectKeys),

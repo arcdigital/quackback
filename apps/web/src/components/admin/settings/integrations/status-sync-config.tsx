@@ -77,9 +77,10 @@ export function StatusSyncConfig({
     updateMappings.mutate({ integrationId, statusMappings: newMappings })
   }
 
-  const webhookUrl = webhookSecret
-    ? `${window.location.origin}/api/integrations/${integrationType}/webhook`
-    : null
+  const webhookUrl =
+    webhookSecret && typeof window !== 'undefined'
+      ? `${window.location.origin}/api/integrations/${integrationType}/webhook`
+      : null
 
   return (
     <div className="space-y-6 border-t border-border/50 pt-6">
