@@ -136,6 +136,26 @@ function makePostCreatedEvent() {
   }
 }
 
+function makePostStatusChangedEvent() {
+  return {
+    id: 'evt-status-1',
+    type: 'post.status_changed' as const,
+    timestamp: '2025-01-01T00:00:00Z',
+    actor: { type: 'user' as const, userId: 'user_1', email: 'test@test.com' },
+    data: {
+      post: {
+        id: 'post_1',
+        title: 'Test',
+        boardId: 'board_1',
+        boardSlug: 'bugs',
+      },
+      previousStatus: 'Open',
+      newStatus: 'Closed',
+      newStatusId: 'status_closed',
+    },
+  }
+}
+
 // ============================================================================
 // Integration mapping caching
 // ============================================================================
@@ -200,6 +220,32 @@ describe('integration mapping caching', () => {
     const slackTargets = targets.filter((t) => t.type === 'slack')
     expect(slackTargets).toHaveLength(1)
     expect(slackTargets[0].target).toEqual({ channelId: 'C123' })
+  })
+
+  it('passes Jira status mappings to outbound status-change jobs', async () => {
+    const statusMappings = { Done: 'status_closed' }
+    mockCacheGet
+      .mockResolvedValueOnce([
+        {
+          eventType: 'post.status_changed',
+          integrationType: 'jira',
+          secrets: JSON.stringify({ accessToken: 'jira-token' }),
+          integrationConfig: {
+            channelId: 'project-1:issue-type-1',
+            cloudId: 'cloud-1',
+            statusMappings,
+          },
+          actionConfig: {},
+          filters: null,
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    const targets = await getHookTargets(makePostStatusChangedEvent())
+
+    const jiraTargets = targets.filter((target) => target.type === 'jira')
+    expect(jiraTargets).toHaveLength(1)
+    expect(jiraTargets[0].config.statusMappings).toEqual(statusMappings)
   })
 
   it('queries DB and caches on miss', async () => {

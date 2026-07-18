@@ -227,7 +227,10 @@ async function persistExternalLink(data: HookJobData, result: HookResult): Promi
  */
 export async function processEvent(event: EventData): Promise<void> {
   const targets = await getHookTargets(event)
-  if (targets.length === 0) return
+  if (targets.length === 0) {
+    log.debug({ event_type: event.type, event_id: event.id }, 'event has no resolved hook targets')
+    return
+  }
 
   log.debug(
     { event_type: event.type, event_id: event.id, target_count: targets.length },

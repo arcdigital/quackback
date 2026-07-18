@@ -6,7 +6,15 @@
  * Errors are caught and logged rather than propagated to the caller.
  */
 
-import type { BoardId, ChangelogId, CommentId, PostId, PrincipalId, UserId } from '@quackback/ids'
+import type {
+  BoardId,
+  ChangelogId,
+  CommentId,
+  PostId,
+  PrincipalId,
+  StatusId,
+  UserId,
+} from '@quackback/ids'
 
 import type {
   EventActor,
@@ -130,12 +138,13 @@ export async function dispatchPostStatusChanged(
   actor: EventActor,
   post: PostStatusChangedInput,
   previousStatus: string,
-  newStatus: string
+  newStatus: string,
+  newStatusId: StatusId
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
     type: 'post.status_changed',
-    data: { post, previousStatus, newStatus },
+    data: { post, previousStatus, newStatus, newStatusId },
   })
 }
 

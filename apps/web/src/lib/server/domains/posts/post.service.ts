@@ -437,7 +437,8 @@ export async function updatePost(
         boardSlug: board.slug,
       },
       previousStatusName,
-      newStatus.name
+      newStatus.name,
+      newStatus.id
     )
 
     createActivity({

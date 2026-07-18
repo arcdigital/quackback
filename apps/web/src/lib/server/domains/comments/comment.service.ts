@@ -318,7 +318,8 @@ export async function createComment(
           boardSlug: board.slug,
         },
         previousStatusName,
-        newStatusName
+        newStatusName,
+        input.statusId as StatusId
       )
     }
   }

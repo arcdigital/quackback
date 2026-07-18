@@ -93,6 +93,8 @@ export interface PostStatusChangedPayload {
   post: EventPostRef
   previousStatus: string
   newStatus: string
+  /** Stable ID used by integrations to resolve outbound status mappings. */
+  newStatusId?: string
 }
 
 export interface CommentCreatedPayload {

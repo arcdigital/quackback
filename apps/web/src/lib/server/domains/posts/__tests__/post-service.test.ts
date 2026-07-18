@@ -156,6 +156,13 @@ describe('post.service updatePost', () => {
 
     expect(buildEventActor).toHaveBeenCalledWith({ principalId: 'principal_actor' })
     expect(dispatchPostStatusChanged).toHaveBeenCalledTimes(1)
+    expect(dispatchPostStatusChanged).toHaveBeenCalledWith(
+      { principalId: 'principal_actor' },
+      expect.objectContaining({ id: 'post_123' }),
+      'Open',
+      'Closed',
+      'status_closed'
+    )
     expect(createActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         principalId: 'principal_actor',

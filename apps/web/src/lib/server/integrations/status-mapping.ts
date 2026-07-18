@@ -29,3 +29,19 @@ export function resolveStatusMapping(
 
   return mapped as StatusId
 }
+
+/**
+ * Resolve a Quackback status ID to all mapped external status names.
+ * Multiple names are possible when separate external workflows share a
+ * Quackback status; the outbound handler selects one available transition.
+ */
+export function resolveExternalStatuses(
+  statusId: string,
+  mappings: StatusMappings | undefined
+): string[] {
+  if (!mappings) return []
+
+  return Object.entries(mappings)
+    .filter(([, mappedStatusId]) => mappedStatusId === statusId)
+    .map(([externalStatus]) => externalStatus)
+}

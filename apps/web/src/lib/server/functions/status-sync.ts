@@ -298,6 +298,9 @@ export const updateStatusMappingsFn = createServerFn({ method: 'POST' })
         })
         .where(eq(integrations.id, integrationId))
 
+      const { cacheDel, CACHE_KEYS } = await import('@/lib/server/redis')
+      await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
+
       return { success: true }
     } catch (error) {
       log.error({ err: error }, 'update status mappings failed')

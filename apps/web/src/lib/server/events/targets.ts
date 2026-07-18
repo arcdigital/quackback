@@ -277,6 +277,7 @@ async function getIntegrationTargets(
   const mappings = allMappings.filter((m) => m.eventType === event.type)
 
   if (mappings.length === 0) {
+    log.debug({ event_type: event.type }, 'no enabled integration mapping for event')
     return []
   }
 
@@ -341,6 +342,9 @@ async function getIntegrationTargets(
           siteUrl: integrationConfig.siteUrl as string | undefined,
           issueTypeId: issueTypeId || undefined,
           reporterAccountId: integrationConfig.reporterAccountId as string | undefined,
+          statusMappings: integrationConfig.statusMappings as
+            | Record<string, string | null>
+            | undefined,
         },
       })
       continue
