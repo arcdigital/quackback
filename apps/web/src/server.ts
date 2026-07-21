@@ -1,5 +1,6 @@
 import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
 import { logStartupBanner } from '@/lib/server/startup'
+import { isPublicLogoStorageRequest } from '@/lib/server/storage/public-logo-route'
 
 // Cold-start optimization: eagerly warm DB + Redis connections AND preload
 // the modules that bootstrap.ts dynamically imports on first SSR. The
@@ -25,7 +26,15 @@ if (process.env.SECRET_KEY) {
 logStartupBanner()
 
 export default createServerEntry({
-  fetch(request) {
+  async fetch(request) {
+    // Workspace logos are intentionally public branding assets. Serve them
+    // before the router/bootstrap pipeline so login gates cannot block portal
+    // branding or email image proxies. PUTs still use the signed upload route.
+    if (isPublicLogoStorageRequest(request)) {
+      const { handleStorageGet } = await import('@/routes/api/storage/$')
+      return handleStorageGet({ request })
+    }
+
     return handler.fetch(request)
   },
 })

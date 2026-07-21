@@ -70,7 +70,7 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: mockGetSignedUrl,
 }))
 
-const { generatePresignedUploadUrl } = await import('@/lib/server/storage/s3')
+const { generatePresignedUploadUrl, getEmailSafeUrl } = await import('@/lib/server/storage/s3')
 
 const KEY = 'uploads/abc123/photo.png'
 const CT = 'image/png'
@@ -263,5 +263,30 @@ describe('Case D — S3_PROXY=true, S3_PUBLIC_URL set (proxy uploads, CDN downlo
   it('does not call getSignedUrl', async () => {
     await generatePresignedUploadUrl(KEY, CT)
     expect(mockGetSignedUrl).not.toHaveBeenCalled()
+  })
+})
+
+describe('email-safe storage URLs', () => {
+  it('uses the public app proxy for logo keys when no CDN is configured', async () => {
+    await expect(getEmailSafeUrl('logos/2026/07/acme.png')).resolves.toBe(
+      'https://app.example.com/api/storage/logos/2026/07/acme.png?email=1'
+    )
+    expect(mockGetSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('keeps non-logo email assets on presigned S3 URLs', async () => {
+    await expect(getEmailSafeUrl('post-images/private.png')).resolves.toContain(
+      'https://s3.amazonaws.com/my-bucket/post-images/private.png'
+    )
+    expect(mockGetSignedUrl).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      expiresIn: 7 * 24 * 60 * 60,
+    })
+  })
+
+  it('prefers S3_PUBLIC_URL when a public CDN is configured', async () => {
+    mockConfig.s3PublicUrl = 'https://cdn.example.com'
+    await expect(getEmailSafeUrl('logos/2026/07/acme.png')).resolves.toBe(
+      'https://cdn.example.com/logos/2026/07/acme.png'
+    )
   })
 })

@@ -475,10 +475,9 @@ export function getPublicUrlOrNull(key: string | null | undefined): string | nul
  * Get an email-safe URL for a storage key.
  * Email image proxies (e.g. Gmail) fetch from their own servers, so the URL must
  * point at a publicly reachable host — the app's BASE_URL may be internal-only.
- * With S3_PUBLIC_URL set we use it; otherwise a presigned S3 URL points directly
- * at the (public) S3 endpoint and works with private buckets. Presigned URLs are
- * capped at 7 days (SigV4 max), so a logo can break if the mail is first opened
- * more than a week after being sent.
+ * With S3_PUBLIC_URL set we use it. Logo objects otherwise use the app's public
+ * logo proxy so email clients receive bytes directly and the URL does not
+ * expire. Other storage keys fall back to a 7-day presigned S3 URL.
  * Returns null if the key is null/undefined or S3 is not configured.
  */
 export async function getEmailSafeUrl(key: string | null | undefined): Promise<string | null> {
@@ -488,6 +487,10 @@ export async function getEmailSafeUrl(key: string | null | undefined): Promise<s
   const s3Config = getS3Config()
   if (s3Config.publicUrl) {
     return buildPublicUrl(s3Config, key)
+  }
+
+  if (key.startsWith('logos/')) {
+    return `${config.baseUrl.replace(/\/$/, '')}/api/storage/${key}?email=1`
   }
 
   return generatePresignedGetUrl(key, 7 * 24 * 60 * 60)
