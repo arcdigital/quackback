@@ -93,6 +93,7 @@ async function createAuth() {
   const { listIdentityProviders, getIdentityProviderCredentials } =
     await import('@/lib/server/domains/settings/identity-providers.service')
   const { buildGenericOAuthConfigs } = await import('./build-oauth-configs')
+  const { buildAccountLinkingOptions } = await import('./account-linking')
 
   // OIDC `locale` claim: shipped by Google, Microsoft, and most generic
   // OIDC IdPs. Pass it through so `user.locale` populates from sign-in
@@ -292,12 +293,9 @@ async function createAuth() {
     },
 
     // Account linking - allow users to link multiple OAuth providers to their account
-    // This is needed when a user signs up with email OTP, then later signs in with GitHub/Google
+    // and let trusted providers claim placeholder users created by feedback ingestion.
     account: {
-      accountLinking: {
-        enabled: true,
-        trustedProviders,
-      },
+      accountLinking: buildAccountLinkingOptions(trustedProviders),
     },
 
     // GitHub/Google OAuth via Better Auth's built-in socialProviders

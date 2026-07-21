@@ -48,7 +48,7 @@ export async function resolveAuthorPrincipal(
   if (author.email) {
     const normalizedEmail = author.email.toLowerCase().trim()
     if (normalizedEmail) {
-      const result = await resolveByEmail(normalizedEmail, author.name)
+      const result = await resolveByEmail(normalizedEmail, author.name, sourceType === 'slack')
       return { principalId: result.principalId, method: result.created ? 'created_new' : 'email' }
     }
   }
@@ -72,7 +72,8 @@ export async function resolveAuthorPrincipal(
 
 async function resolveByEmail(
   email: string,
-  name?: string
+  name?: string,
+  emailVerified = false
 ): Promise<{ principalId: PrincipalId; created: boolean }> {
   // Look up existing principal by email. Lower-fold both sides so a
   // user signed up via Better-Auth as 'Alice@example.com' is matched
@@ -80,13 +81,23 @@ async function resolveByEmail(
   // silently create a duplicate user record). The user_email_lower_idx
   // functional index keeps this from regressing to a seq scan.
   const existing = await db
-    .select({ principalId: principal.id })
+    .select({
+      principalId: principal.id,
+      userId: user.id,
+      emailVerified: user.emailVerified,
+    })
     .from(user)
     .innerJoin(principal, eq(principal.userId, user.id))
     .where(sql`LOWER(${user.email}) = ${email}`)
     .limit(1)
 
   if (existing.length > 0) {
+    if (emailVerified && !existing[0].emailVerified) {
+      await db
+        .update(user)
+        .set({ emailVerified: true, updatedAt: new Date() })
+        .where(eq(user.id, existing[0].userId))
+    }
     return { principalId: existing[0].principalId as PrincipalId, created: false }
   }
 
@@ -99,7 +110,7 @@ async function resolveByEmail(
     id: userId,
     email,
     name: displayName,
-    emailVerified: false,
+    emailVerified,
     createdAt: new Date(),
     updatedAt: new Date(),
   })
@@ -134,7 +145,7 @@ async function resolveByExternalId(
 
   // If we also have an email, resolve by email first
   if (email) {
-    const result = await resolveByEmail(email.toLowerCase().trim(), name)
+    const result = await resolveByEmail(email.toLowerCase().trim(), name, sourceType === 'slack')
 
     // Create the external mapping for future lookups
     await db

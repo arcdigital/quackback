@@ -8,6 +8,7 @@ import type { PrincipalId } from '@quackback/ids'
 // --- Mock tracking ---
 const mockSelect = vi.fn()
 const mockInsertValues = vi.fn()
+const mockUpdateSet = vi.fn()
 const mockFindFirstExternalMapping = vi.fn()
 
 const mockWhereCalls: unknown[] = []
@@ -33,10 +34,21 @@ function createInsertChain() {
   return chain
 }
 
+function createUpdateChain() {
+  const chain: Record<string, unknown> = {}
+  chain.set = vi.fn((...args: unknown[]) => {
+    mockUpdateSet(...args)
+    return chain
+  })
+  chain.where = vi.fn().mockResolvedValue(undefined)
+  return chain
+}
+
 vi.mock('@/lib/server/db', () => ({
   db: {
     select: (...args: unknown[]) => mockSelect(...args),
     insert: vi.fn(() => createInsertChain()),
+    update: vi.fn(() => createUpdateChain()),
     query: {
       externalUserMappings: {
         findFirst: (...args: unknown[]) => mockFindFirstExternalMapping(...args),
@@ -52,7 +64,7 @@ vi.mock('@/lib/server/db', () => ({
     raw: strings.join(' '),
     values,
   })),
-  user: { email: 'email' },
+  user: { id: 'user_id', email: 'email', emailVerified: 'email_verified' },
   principal: { id: 'principal_id', userId: 'user_id' },
   externalUserMappings: {},
 }))
@@ -107,6 +119,35 @@ describe('resolveAuthorPrincipal', () => {
 
     expect(result.method).toBe('created_new')
     expect(result.principalId).toBeTruthy()
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'new@example.com', emailVerified: false })
+    )
+  })
+
+  it('trusts Slack email when creating a user', async () => {
+    mockSelect.mockReturnValue(createSelectChain([]))
+
+    await resolveAuthorPrincipal({ email: 'slack-user@example.com', name: 'Slack User' }, 'slack')
+
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'slack-user@example.com', emailVerified: true })
+    )
+  })
+
+  it('marks an existing matching user verified when resolved through Slack', async () => {
+    mockSelect.mockReturnValue(
+      createSelectChain([
+        {
+          principalId: 'principal_existing',
+          userId: 'user_existing',
+          emailVerified: false,
+        },
+      ])
+    )
+
+    await resolveAuthorPrincipal({ email: 'existing@example.com' }, 'slack')
+
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ emailVerified: true }))
   })
 
   it('normalizes email to lowercase', async () => {
